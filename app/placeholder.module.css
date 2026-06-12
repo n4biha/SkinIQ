@@ -1,0 +1,28 @@
+/* Shared styling for the stub route pages in this slice.
+   Real screen content replaces these in the next slices. */
+
+.page {
+  max-width: 920px;
+}
+
+.heading {
+  font-size: 26px;
+  margin-bottom: var(--space-2);
+}
+
+.subtext {
+  color: var(--muted);
+  margin-bottom: var(--space-5);
+}
+
+.stub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: 14px;
+  padding: var(--space-5);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}

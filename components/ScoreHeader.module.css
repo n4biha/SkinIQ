@@ -1,0 +1,106 @@
+.header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-6);
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5) var(--space-6);
+}
+
+.product {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-1);
+}
+
+.scanned {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.scoreBlock {
+  text-align: right;
+  min-width: 200px;
+}
+
+.scoreValue {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--green);
+  line-height: 1;
+}
+
+.scoreMax {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.scoreLabel {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.scoreSub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+}
+
+.bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--green);
+}
+
+@media (max-width: 760px) {
+  .header {
+    grid-template-columns: 1fr;
+  }
+
+  .scoreBlock {
+    text-align: left;
+  }
+}

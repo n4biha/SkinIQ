@@ -1,0 +1,120 @@
+/* SkinIQ design system — tokens + base styles.
+   Clean, airy, clinical-but-friendly. Green brand accent, sentence case. */
+
+:root {
+  /* Brand + semantic colors */
+  --green: #2f8f5b; /* primary: buttons, active nav, score */
+  --green-dark: #1f6b43; /* text on light-green backgrounds */
+  --green-soft: #e8f3ec; /* selected tiles/chips, light tints */
+  --ink: #1a2b23; /* primary text */
+  --muted: #6b7770; /* secondary text */
+  --border: #e4eae6;
+  --bg: #f7f9f8; /* page background */
+  --surface: #ffffff; /* cards */
+  --good: #2f8f5b;
+  --caution: #b0660f; /* amber, for "potential concerns" */
+  --flag: #b23b2e; /* red, for allergy hits */
+
+  /* Shape + elevation */
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --shadow-soft: 0 1px 2px rgba(26, 43, 35, 0.04), 0 4px 16px rgba(26, 43, 35, 0.05);
+  --shadow-card: 0 1px 3px rgba(26, 43, 35, 0.06), 0 8px 24px rgba(26, 43, 35, 0.05);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--ink);
+  line-height: 1.25;
+  margin: 0;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---- Shared primitives ---- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--green-dark);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--green-soft);
+  border-color: var(--green-soft);
+  color: var(--green-dark);
+}

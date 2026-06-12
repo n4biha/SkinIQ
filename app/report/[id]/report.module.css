@@ -1,0 +1,56 @@
+.page {
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.topActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: calc(var(--space-3) * -1);
+}
+
+/* ---- How to use callout ---- */
+
+.howToUse {
+  display: flex;
+  gap: var(--space-4);
+  background: var(--green-soft);
+  border: 1px solid #d3e6da;
+  border-radius: var(--radius);
+  padding: var(--space-5);
+}
+
+.howIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--green);
+}
+
+.howTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--green-dark);
+  margin-bottom: var(--space-2);
+}
+
+.howBody {
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.disclaimer {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 0 var(--space-4);
+}

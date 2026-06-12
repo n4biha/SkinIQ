@@ -1,0 +1,263 @@
+.page {
+  max-width: 1000px;
+}
+
+.heading {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-2);
+}
+
+.subtext {
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 52ch;
+  margin-bottom: var(--space-6);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+/* ---- Dropzone ---- */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 320px;
+  padding: var(--space-6);
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dropzone:hover,
+.dragging {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.dropIcon {
+  color: var(--green);
+  margin-bottom: var(--space-2);
+}
+
+.dropTitle {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.dropHint {
+  color: var(--muted);
+}
+
+.dropMeta {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.preview {
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.uploadActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.btn-primary:disabled,
+.uploadActions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Example card ---- */
+
+.example {
+  padding: var(--space-5);
+}
+
+.exampleLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+}
+
+.sampleLabel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.sampleTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: var(--space-3);
+}
+
+.sampleLine {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  margin-bottom: var(--space-2);
+}
+
+.tipsHeading {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+.tips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.tipCheck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* ---- Analyzing ---- */
+
+.analyzingWrap {
+  max-width: 520px;
+  margin: var(--space-6) auto 0;
+  text-align: center;
+}
+
+.analyzingWrap .subtext {
+  margin: 0 auto var(--space-6);
+}
+
+.checklist {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.checkMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+}
+
+.done {
+  color: var(--ink);
+}
+
+.done .checkMark {
+  background: var(--green);
+  color: #fff;
+}
+
+.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.current .checkMark {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.pending .checkMark {
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--green-soft);
+  border-top-color: var(--green);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.privacy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

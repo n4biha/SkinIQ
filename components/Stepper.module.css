@@ -1,0 +1,85 @@
+.stepper {
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.done {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.current {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.future {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.label {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.doneLabel {
+  color: var(--green-dark);
+  font-weight: 500;
+}
+
+.currentLabel {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.futureLabel {
+  color: var(--muted);
+}
+
+.connector {
+  flex: 1;
+  height: 2px;
+  min-width: 16px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.connectorDone {
+  background: var(--green);
+}
+
+@media (max-width: 720px) {
+  .label {
+    display: none;
+  }
+}

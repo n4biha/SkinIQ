@@ -1,0 +1,189 @@
+.page {
+  max-width: 1000px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-7);
+  align-items: start;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+}
+
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.heading {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-3);
+}
+
+.leaf::after {
+  content: " 🌿";
+  font-size: 0.8em;
+}
+
+.subtext {
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 40ch;
+}
+
+.section {
+  margin-top: var(--space-6);
+}
+
+.question {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.hint {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 14px;
+}
+
+/* ---- Skin type tiles ---- */
+
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.tile:hover {
+  border-color: var(--green);
+}
+
+.tileSelected {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.tileIcon {
+  display: inline-flex;
+  color: inherit;
+}
+
+.tileLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tileSelected .tileLabel {
+  color: var(--green-dark);
+}
+
+/* ---- Illustration ---- */
+
+.illustration {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--green-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.illustrationImg {
+  object-fit: contain;
+}
+
+/* ---- Concern chips ---- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.chip:hover {
+  border-color: var(--green);
+}
+
+.chipSelected {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+.chipAdd {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.chipAdd:hover {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+/* ---- Actions ---- */
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}

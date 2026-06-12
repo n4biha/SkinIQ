@@ -1,0 +1,204 @@
+.wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.tabBar {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.tabActive {
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+.panel {
+  padding: var(--space-6);
+}
+
+/* ---- Overview three columns ---- */
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.colTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.good {
+  color: var(--good);
+}
+
+.caution {
+  color: var(--caution);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.listItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bulletGood {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.bulletCaution {
+  background: #f6e9d8;
+  color: var(--caution);
+}
+
+/* ---- Ingredients ---- */
+
+.ingredients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ingredient {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.ingredient:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ingTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ingName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ingFn {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.ingNote {
+  font-size: 14px;
+  color: var(--ink);
+  margin-top: var(--space-2);
+}
+
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+}
+
+.tag_good {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.tag_caution {
+  background: #f6e9d8;
+  color: var(--caution);
+}
+
+.tag_flag {
+  background: #f6dcd8;
+  color: var(--flag);
+}
+
+/* ---- Full analysis ---- */
+
+.full {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.fullSummary {
+  font-size: 15px;
+  color: var(--ink);
+}
+
+@media (max-width: 860px) {
+  .overview {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+}
