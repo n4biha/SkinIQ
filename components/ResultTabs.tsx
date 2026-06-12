@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MockReport } from "@/lib/mockReport";
+import type { Report } from "@/lib/types";
 import ConcernBars from "./ConcernBars";
 import styles from "./ResultTabs.module.css";
 
@@ -20,7 +20,7 @@ const FLAG_LABEL: Record<string, string> = {
   flag: "Flag",
 };
 
-export default function ResultTabs({ report }: { report: MockReport }) {
+export default function ResultTabs({ report }: { report: Report }) {
   const [tab, setTab] = useState<Tab>("Overview");
 
   return (

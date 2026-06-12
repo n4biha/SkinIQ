@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Stepper from "@/components/Stepper";
+import { useProfile } from "@/lib/profile-context";
+import type { SkinType } from "@/lib/types";
 import styles from "./onboarding.module.css";
 
-type SkinType = {
-  id: string;
+type SkinTypeTile = {
+  id: SkinType;
   label: string;
   icon: React.ReactNode;
 };
 
-const SKIN_TYPES: SkinType[] = [
+const SKIN_TYPES: SkinTypeTile[] = [
   { id: "oily", label: "Oily", icon: <DropIcon /> },
   { id: "dry", label: "Dry", icon: <SunIcon /> },
   { id: "combination", label: "Combination", icon: <SplitIcon /> },
@@ -30,14 +31,10 @@ const CONCERNS = [
 ];
 
 export default function OnboardingPage() {
-  const [skinType, setSkinType] = useState<string | null>("combination");
-  const [concerns, setConcerns] = useState<string[]>(["Acne"]);
-
-  function toggleConcern(c: string) {
-    setConcerns((prev) =>
-      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
-    );
-  }
+  // Selections persist immediately via the profile context (localStorage).
+  const { profile, setSkinType, toggleConcern } = useProfile();
+  const skinType = profile.skinType;
+  const concerns = profile.concerns;
 
   return (
     <div className={styles.page}>

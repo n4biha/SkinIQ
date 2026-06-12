@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import styles from "./layout.module.css";
 import Sidebar from "@/components/Sidebar";
+import { ProfileProvider } from "@/lib/profile-context";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -23,10 +24,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body>
-        <div className={styles.shell}>
-          <Sidebar />
-          <main className={styles.main}>{children}</main>
-        </div>
+        <ProfileProvider>
+          <div className={styles.shell}>
+            <Sidebar />
+            <main className={styles.main}>{children}</main>
+          </div>
+        </ProfileProvider>
       </body>
     </html>
   );

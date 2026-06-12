@@ -16,6 +16,16 @@
   margin-bottom: var(--space-6);
 }
 
+.error {
+  background: #fbeae8;
+  color: var(--flag);
+  border: 1px solid #f0cfc9;
+  border-radius: 12px;
+  padding: var(--space-3) var(--space-4);
+  font-size: 14px;
+  margin-bottom: var(--space-5);
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;

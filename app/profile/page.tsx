@@ -1,11 +1,84 @@
-import styles from "../placeholder.module.css";
+"use client";
+
+import Link from "next/link";
+import { useProfile } from "@/lib/profile-context";
+import type { SkinType } from "@/lib/types";
+import styles from "./profile.module.css";
+
+const SKIN_TYPE_LABELS: Record<SkinType, string> = {
+  oily: "Oily",
+  dry: "Dry",
+  combination: "Combination",
+  sensitive: "Sensitive",
+  "not-sure": "Not sure",
+};
 
 export default function ProfilePage() {
+  const { profile, hydrated } = useProfile();
+
+  // Avoid a flash of the empty state before localStorage is read.
+  if (!hydrated) {
+    return (
+      <div className={styles.page}>
+        <h1 className={styles.heading}>Profile</h1>
+      </div>
+    );
+  }
+
+  const hasProfile = profile.skinType !== null || profile.concerns.length > 0;
+
+  if (!hasProfile) {
+    return (
+      <div className={styles.page}>
+        <h1 className={styles.heading}>Profile</h1>
+        <p className={styles.subtext}>You haven&apos;t set up your profile yet.</p>
+        <div className={styles.empty}>
+          <p className={styles.emptyText}>
+            Build your skin profile so we can personalize every ingredient review.
+          </p>
+          <Link href="/onboarding" className="btn btn-primary">
+            Build your profile →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
-      <h1 className={styles.heading}>Profile</h1>
-      <p className={styles.subtext}>View and edit your saved skin profile.</p>
-      <div className={styles.stub}>Profile view coming in the next slice.</div>
+      <div className={styles.headerRow}>
+        <div>
+          <h1 className={styles.heading}>Profile</h1>
+          <p className={styles.subtext}>Your saved skin profile.</p>
+        </div>
+        <Link href="/onboarding" className="btn btn-secondary">
+          Edit profile
+        </Link>
+      </div>
+
+      <section className={`card ${styles.card}`}>
+        <h2 className={styles.label}>Skin type</h2>
+        {profile.skinType ? (
+          <span className={styles.chip}>{SKIN_TYPE_LABELS[profile.skinType]}</span>
+        ) : (
+          <p className={styles.muted}>Not set</p>
+        )}
+      </section>
+
+      <section className={`card ${styles.card}`}>
+        <h2 className={styles.label}>Main concerns</h2>
+        {profile.concerns.length > 0 ? (
+          <div className={styles.chips}>
+            {profile.concerns.map((c) => (
+              <span key={c} className={styles.chip}>
+                {c}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.muted}>None selected</p>
+        )}
+      </section>
     </div>
   );
 }

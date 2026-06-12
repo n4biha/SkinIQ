@@ -1,40 +1,12 @@
 /**
- * Phase A mock report data so the results screen renders fully.
- * Phase B replaces this with a typed Report built from the Gemini call +
- * the deterministic scoring engine (lib/scoring.ts). Shapes here are a
- * lightweight preview of those types — do not depend on them long-term.
+ * Demo report fixture so the results screen renders fully before the real
+ * pipeline is wired. Conforms to the shared `Report` type (lib/types.ts).
+ * Retired in B6 once /api/analyze produces real reports (kept for tests).
  */
 
-export type Verdict = "Good Match" | "Fair Match" | "Poor Match";
+import type { Report } from "@/lib/types";
 
-export type IngredientNote = {
-  name: string;
-  function: string;
-  note: string;
-  flag?: "good" | "caution" | "flag";
-};
-
-export type ConcernScore = {
-  label: string;
-  percent: number;
-};
-
-export type MockReport = {
-  id: string;
-  productName: string;
-  scannedOn: string;
-  overallScore: number; // 0–10
-  verdict: Verdict;
-  summary: string;
-  highlights: string[];
-  cautions: string[];
-  benefits: string[];
-  concernScores: ConcernScore[];
-  ingredients: IngredientNote[];
-  howToUse: string;
-};
-
-export const MOCK_REPORT: MockReport = {
+export const MOCK_REPORT: Report = {
   id: "sample",
   productName: "The Ordinary Niacinamide 10% + Zinc 1%",
   scannedOn: "June 11, 2026",

@@ -1,7 +1,7 @@
-import type { MockReport } from "@/lib/mockReport";
+import type { Report } from "@/lib/types";
 import styles from "./ScoreHeader.module.css";
 
-export default function ScoreHeader({ report }: { report: MockReport }) {
+export default function ScoreHeader({ report }: { report: Report }) {
   const pct = Math.round((report.overallScore / 10) * 100);
 
   return (

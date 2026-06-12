@@ -3,6 +3,7 @@ import Stepper from "@/components/Stepper";
 import ScoreHeader from "@/components/ScoreHeader";
 import ResultTabs from "@/components/ResultTabs";
 import { MOCK_REPORT } from "@/lib/mockReport";
+import { getReport } from "@/lib/report-store";
 import styles from "./report.module.css";
 
 export default async function ReportPage({
@@ -10,8 +11,11 @@ export default async function ReportPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await params; // Phase B: look up the report by id. Phase A always renders the mock.
-  const report = MOCK_REPORT;
+  const { id } = await params;
+  // Real scans are stored by /api/analyze. Fall back to the mock so /report/sample
+  // (and reloads after a dev-server restart, when the in-memory store is empty)
+  // still render instead of 404ing.
+  const report = getReport(id) ?? MOCK_REPORT;
 
   return (
     <div className={styles.page}>

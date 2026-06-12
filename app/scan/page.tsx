@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Stepper from "@/components/Stepper";
+import { useProfile } from "@/lib/profile-context";
 import styles from "./scan.module.css";
 
 type View = "upload" | "analyzing";
@@ -23,15 +24,19 @@ const TIPS = [
 
 export default function ScanPage() {
   const router = useRouter();
+  const { profile } = useProfile();
   const [view, setView] = useState<View>("upload");
   const [preview, setPreview] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleFile(file?: File | null) {
-    if (!file || !file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    setPreview(url);
+  function handleFile(f?: File | null) {
+    if (!f || !f.type.startsWith("image/")) return;
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+    setError(null);
   }
 
   function onDrop(e: React.DragEvent) {
@@ -40,14 +45,33 @@ export default function ScanPage() {
     handleFile(e.dataTransfer.files?.[0]);
   }
 
-  function onAnalyze() {
-    // Phase A: simulate the pipeline, then route to a mock report.
-    // Phase B replaces this with a POST to /api/analyze.
+  async function onAnalyze() {
+    if (!file) return;
     setView("analyzing");
+    setError(null);
+    try {
+      const image = await fileToBase64(file);
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image, mimeType: file.type, profile }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `Analysis failed (${res.status}).`);
+      }
+      const { id } = await res.json();
+      router.push(`/report/${id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Something went wrong. Please try again.",
+      );
+      setView("upload");
+    }
   }
 
   if (view === "analyzing") {
-    return <Analyzing onDone={() => router.push("/report/sample")} />;
+    return <Analyzing />;
   }
 
   return (
@@ -59,6 +83,12 @@ export default function ScanPage() {
         Take a clear photo of the product packaging — we read the ingredients
         straight off the label.
       </p>
+
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      )}
 
       <div className={styles.grid}>
         {/* Upload zone */}
@@ -102,7 +132,10 @@ export default function ScanPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setPreview(null)}
+                onClick={() => {
+                  setPreview(null);
+                  setFile(null);
+                }}
               >
                 Choose another
               </button>
@@ -149,19 +182,33 @@ export default function ScanPage() {
   );
 }
 
+/* ---- Helpers ---- */
+
+/** Read a File into a bare base64 string (no `data:...;base64,` prefix). */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 /* ---- Analyzing state (Stepper step 3) ---- */
 
-function Analyzing({ onDone }: { onDone: () => void }) {
+// Purely visual: animate through the steps while the real /api/analyze request
+// is in flight, then hold on the last step until the page navigates to the report.
+function Analyzing() {
   const [active, setActive] = useState(0);
 
   useEffect(() => {
-    if (active >= ANALYZE_STEPS.length) {
-      const t = setTimeout(onDone, 700);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setActive((a) => a + 1), 1400);
+    if (active >= ANALYZE_STEPS.length - 1) return; // hold on the final step
+    const t = setTimeout(() => setActive((a) => a + 1), 1800);
     return () => clearTimeout(t);
-  }, [active, onDone]);
+  }, [active]);
 
   return (
     <div className={styles.page}>

@@ -1,4 +1,4 @@
-import type { ConcernScore } from "@/lib/mockReport";
+import type { ConcernScore } from "@/lib/types";
 import styles from "./ConcernBars.module.css";
 
 export default function ConcernBars({ scores }: { scores: ConcernScore[] }) {
