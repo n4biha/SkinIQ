@@ -92,6 +92,8 @@ export const ReportSchema = z.object({
   concernScores: z.array(ConcernScoreSchema),
   ingredients: z.array(IngredientNoteSchema),
   howToUse: z.string(),
+  // Optional signed URL to the uploaded label photo (Phase C3). Absent → placeholder.
+  imageUrl: z.string().optional(),
 });
 
 /* ---- The prose subset Gemini writes (numbers stay in scoring.ts) ---- */

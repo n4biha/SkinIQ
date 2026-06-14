@@ -24,13 +24,20 @@ const TIPS = [
 
 export default function ScanPage() {
   const router = useRouter();
-  const { profile } = useProfile();
+  const { profile, hydrated } = useProfile();
   const [view, setView] = useState<View>("upload");
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Scanning is step 2 — it needs a skin profile. If someone lands here without
+  // one (e.g. via the sidebar before onboarding), send them to step 1 first.
+  const needsOnboarding = hydrated && !profile.skinType;
+  useEffect(() => {
+    if (needsOnboarding) router.replace("/onboarding");
+  }, [needsOnboarding, router]);
 
   function handleFile(f?: File | null) {
     if (!f || !f.type.startsWith("image/")) return;
@@ -68,6 +75,11 @@ export default function ScanPage() {
       );
       setView("upload");
     }
+  }
+
+  // Wait for the profile to load (avoids a flash) and hold while redirecting.
+  if (!hydrated || needsOnboarding) {
+    return null;
   }
 
   if (view === "analyzing") {

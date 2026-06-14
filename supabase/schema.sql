@@ -78,3 +78,12 @@ alter table profiles    enable row level security;
 alter table scans       enable row level security;
 alter table results     enable row level security;
 alter table ingredients enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Storage: a PRIVATE bucket for uploaded label photos. Not public — the server
+-- mints short-lived signed URLs to display them. (Service-role uploads/reads
+-- bypass Storage RLS, so no extra policies are needed.)
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('scans', 'scans', false)
+on conflict (id) do nothing;

@@ -15,7 +15,7 @@ export default async function ReportPage({
   // Real scans are stored by /api/analyze. Fall back to the mock so /report/sample
   // (and reloads after a dev-server restart, when the in-memory store is empty)
   // still render instead of 404ing.
-  const report = getReport(id) ?? MOCK_REPORT;
+  const report = (await getReport(id)) ?? MOCK_REPORT;
 
   return (
     <div className={styles.page}>

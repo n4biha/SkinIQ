@@ -18,6 +18,8 @@ import { readLabel, writeReportCopy } from "@/lib/gemini";
 import { scoreProduct, type ScoringResult } from "@/lib/scoring";
 import { resolveIngredients } from "@/lib/ingredients/resolve";
 import { putReport } from "@/lib/report-store";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { saveScan } from "@/lib/storage";
 import {
   ReportSchema,
   SkinProfileSchema,
@@ -174,8 +176,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // 6) Store it so /report/[id] can render it (B6).
-  putReport(validated.data);
+  // 6) Upload the photo to Storage + create a scans row (best-effort), then store
+  //    the report linked to it. An image failure is non-fatal — the scan still works.
+  let scanId: string | undefined;
+  if (isSupabaseConfigured()) {
+    scanId = (await saveScan(image, mimeType)) ?? undefined;
+  }
+  await putReport(validated.data, scanId);
 
   return NextResponse.json({ id: validated.data.id, report: validated.data });
 }
