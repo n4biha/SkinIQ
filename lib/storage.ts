@@ -57,6 +57,30 @@ export async function saveScan(
   }
 }
 
+/** Batch-sign many scan paths in one call → a path→url map (best-effort). */
+export async function signScanUrls(
+  paths: string[],
+  expiresIn = 3600,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (paths.length === 0) return map;
+  try {
+    const { data, error } = await getServerSupabase()
+      .storage.from(BUCKET)
+      .createSignedUrls(paths, expiresIn);
+    if (error) {
+      console.warn("[storage] signScanUrls failed:", error.message);
+      return map;
+    }
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) map.set(item.path, item.signedUrl);
+    }
+  } catch (err) {
+    console.warn("[storage] signScanUrls error:", err instanceof Error ? err.message : err);
+  }
+  return map;
+}
+
 /** Mint a temporary signed URL for a stored scan path (or null on failure). */
 export async function signScanUrl(
   path: string,

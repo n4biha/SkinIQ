@@ -14,8 +14,8 @@
  */
 
 import { isSupabaseConfigured, getServerSupabase } from "@/lib/supabase";
-import { signScanUrl } from "@/lib/storage";
-import { ReportSchema, type Report } from "@/lib/types";
+import { signScanUrl, signScanUrls } from "@/lib/storage";
+import { ReportSchema, type Report, type Verdict } from "@/lib/types";
 
 // In-memory fallback + same-process cache, kept across hot-reloads.
 const globalForReports = globalThis as unknown as {
@@ -87,6 +87,55 @@ export async function putReport(report: Report, scanId?: string): Promise<string
     }
   }
   return report.id;
+}
+
+/** Lightweight projection for the History feed. */
+export type HistoryItem = {
+  id: string;
+  productName: string;
+  scannedOn: string;
+  overallScore: number;
+  verdict: Verdict;
+  imageUrl?: string;
+};
+
+/** List past reports, newest first — from the DB if configured, else in-memory. */
+export async function listReports(limit = 50): Promise<HistoryItem[]> {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await getServerSupabase()
+      .from(TABLE)
+      .select("id, product_name, overall_score, verdict, created_at, scans(image_url)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      console.warn("[report-store] list query failed, trying memory:", error.message);
+    } else if (data) {
+      const paths = data
+        .map((r) => (r.scans as { image_url?: string } | null)?.image_url)
+        .filter((p): p is string => Boolean(p));
+      const signed = await signScanUrls(paths);
+      return data.map((r) => {
+        const path = (r.scans as { image_url?: string } | null)?.image_url;
+        return {
+          id: r.id as string,
+          productName: (r.product_name as string) ?? "Scanned product",
+          scannedOn: formatDate(String(r.created_at)),
+          overallScore: Number(r.overall_score),
+          verdict: r.verdict as Verdict,
+          imageUrl: path ? signed.get(path) : undefined,
+        };
+      });
+    }
+  }
+  // Fallback: in-memory, most-recent-first.
+  return [...reports.values()].reverse().slice(0, limit).map((r) => ({
+    id: r.id,
+    productName: r.productName,
+    scannedOn: r.scannedOn,
+    overallScore: r.overallScore,
+    verdict: r.verdict,
+    imageUrl: r.imageUrl,
+  }));
 }
 
 /** Look up a report by id — from the DB if configured, else in-memory.
