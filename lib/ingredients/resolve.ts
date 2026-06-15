@@ -14,7 +14,7 @@
 import { normalizeName } from "@/lib/ingredients/normalize";
 import { lookupCurated } from "@/lib/ingredients/curated";
 import { lookupCosing } from "@/lib/ingredients/cosing";
-import { getCached, putCached } from "@/lib/ingredients/store";
+import { getCachedMany, putCachedMany } from "@/lib/ingredients/store";
 import { classifyIngredients } from "@/lib/gemini";
 import type { IngredientInfo, ResolvedIngredient } from "@/lib/ingredients/types";
 import type { Concern, HelpStrength, IngredientAssessment } from "@/lib/types";
@@ -40,6 +40,7 @@ function toInfo(a: IngredientAssessment): IngredientInfo {
 export async function resolveIngredients(
   names: string[],
 ): Promise<ResolvedIngredient[]> {
+  // Pass 1 (sync): Tier 1 curated + Tier 2 CosIng.
   const resolved: ResolvedIngredient[] = names.map((raw) => {
     const normalized = normalizeName(raw);
 
@@ -49,16 +50,25 @@ export async function resolveIngredients(
     const cosing = normalized ? lookupCosing(normalized) : undefined;
     if (cosing) return { raw, normalized, info: cosing, tier: 2 };
 
-    const cached = normalized ? getCached(normalized) : undefined;
-    if (cached) return { raw, normalized, info: cached, tier: 3 };
-
     return { raw, normalized, info: null, tier: null };
   });
 
-  // Anything resolved at tier 3 here came from the persistent cache (no model call).
+  // Pass 2 (async): persistent Tier-3 cache for whatever's still unresolved.
+  const needCache = resolved.filter((r) => !r.info && r.normalized);
+  if (needCache.length) {
+    const cached = await getCachedMany(needCache.map((r) => r.normalized));
+    for (const r of needCache) {
+      const hit = cached.get(r.normalized);
+      if (hit) {
+        r.info = hit;
+        r.tier = 3;
+      }
+    }
+  }
+  // Tier-3 hits so far came from the persistent cache (no model call).
   const cacheHits = resolved.filter((r) => r.tier === 3).length;
 
-  // Tier 3: classify everything still unresolved in one batched call, then cache.
+  // Pass 3: classify everything still missing in one batched call, then persist.
   const misses = resolved.filter((r) => !r.info && r.normalized);
   let freshlyClassified = 0;
   if (misses.length) {
@@ -68,6 +78,7 @@ export async function resolveIngredients(
       const byNorm = new Map<string, IngredientInfo>();
       for (const c of classified) byNorm.set(normalizeName(c.name), toInfo(c));
 
+      const toPersist: Array<{ normalized: string; info: IngredientInfo }> = [];
       misses.forEach((m, i) => {
         // Prefer positional mapping (we asked for same order); fall back to name.
         const info = sameLength ? toInfo(classified[i]) : byNorm.get(m.normalized);
@@ -75,9 +86,10 @@ export async function resolveIngredients(
           m.info = info;
           m.tier = 3;
           freshlyClassified++;
-          putCached(m.normalized, info);
+          toPersist.push({ normalized: m.normalized, info });
         }
       });
+      await putCachedMany(toPersist);
     } catch (err) {
       console.warn(
         "[ingredients] Tier-3 classification failed; leaving unresolved:",

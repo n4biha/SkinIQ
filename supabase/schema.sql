@@ -48,20 +48,21 @@ create table if not exists results (
 );
 
 -- ---------------------------------------------------------------------------
--- ingredients — the persistent home for the resolver's Tier-2 (CosIng) data and
--- Tier-3 (Gemini) cache. Keyed by normalized INCI name. Filled in C6.
+-- ingredients — persistent Tier-3 (Gemini) cache, keyed by normalized INCI name.
+-- Graded shape: `helps` is a jsonb map of concern -> "strong"|"moderate".
+-- So each ingredient is graded by the model once, then reused forever (C6).
 -- ---------------------------------------------------------------------------
 create table if not exists ingredients (
-  inci_name    text primary key,
-  display      text,
-  function     text,
-  benefits_for jsonb,
-  comedogenic  int,
-  is_irritant  boolean,
-  is_fragrance boolean,
-  note         text,
-  source       text,                 -- 'curated' | 'cosing' | 'gemini'
-  created_at   timestamptz not null default now()
+  inci_name   text primary key,
+  display     text,
+  function    text,
+  helps       jsonb   not null default '{}'::jsonb,
+  irritation  text    not null default 'none',
+  comedogenic int     not null default 0,
+  fragrance   boolean not null default false,
+  note        text,
+  source      text,                  -- 'gemini'
+  created_at  timestamptz not null default now()
 );
 
 -- ---------------------------------------------------------------------------
@@ -70,6 +71,13 @@ create table if not exists ingredients (
 -- ---------------------------------------------------------------------------
 alter table results  add column if not exists user_id text;
 alter table profiles add column if not exists sensitive boolean not null default false;
+-- ingredients: migrate the pre-grading shape to the graded one (table is a cache).
+alter table ingredients add column if not exists helps      jsonb   not null default '{}'::jsonb;
+alter table ingredients add column if not exists irritation text    not null default 'none';
+alter table ingredients add column if not exists fragrance  boolean not null default false;
+alter table ingredients drop column if exists benefits_for;
+alter table ingredients drop column if exists is_irritant;
+alter table ingredients drop column if exists is_fragrance;
 create index if not exists results_user_id_idx on results(user_id);
 create index if not exists scans_user_id_idx   on scans(user_id);
 create unique index if not exists profiles_user_id_key on profiles(user_id);
