@@ -26,7 +26,10 @@ export default function ProfilePage() {
     );
   }
 
-  const hasProfile = profile.skinType !== null || profile.concerns.length > 0;
+  const hasProfile =
+    profile.skinType !== null ||
+    profile.concerns.length > 0 ||
+    profile.allergies.length > 0;
 
   if (!hasProfile) {
     return (
@@ -81,6 +84,21 @@ export default function ProfilePage() {
           </div>
         ) : (
           <p className={styles.muted}>None selected</p>
+        )}
+      </section>
+
+      <section className={`card ${styles.card}`}>
+        <h2 className={styles.label}>Ingredient allergies</h2>
+        {profile.allergies.length > 0 ? (
+          <div className={styles.chips}>
+            {profile.allergies.map((a) => (
+              <span key={a} className={styles.chip}>
+                {a}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className={styles.muted}>None added</p>
         )}
       </section>
     </div>

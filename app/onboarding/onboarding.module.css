@@ -173,6 +173,71 @@
   color: var(--green-dark);
 }
 
+/* ---- Inline add input (custom concern + allergies) ---- */
+
+.addInput {
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  min-width: 180px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.addInput::placeholder {
+  color: var(--muted);
+}
+
+.addInput:focus {
+  border-color: var(--green);
+}
+
+.addForm {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+/* ---- Allergy tags (removable) ---- */
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px 10px 9px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tagRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--green-dark);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.tagRemove:hover {
+  background: rgba(31, 107, 67, 0.15);
+}
+
 /* ---- Actions ---- */
 
 .actions {

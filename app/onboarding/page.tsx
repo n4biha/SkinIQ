@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import Stepper from "@/components/Stepper";
@@ -31,10 +32,32 @@ const CONCERNS = [
 ];
 
 export default function OnboardingPage() {
-  // Selections persist immediately via the profile context (localStorage).
-  const { profile, setSkinType, toggleConcern } = useProfile();
+  // Selections persist immediately via the profile context (localStorage + DB).
+  const { profile, setSkinType, toggleConcern, addAllergy, removeAllergy } =
+    useProfile();
   const skinType = profile.skinType;
   const concerns = profile.concerns;
+
+  // Concerns the user typed themselves (not one of the preset chips).
+  const customConcerns = concerns.filter((c) => !CONCERNS.includes(c));
+
+  const [showConcernInput, setShowConcernInput] = useState(false);
+  const [concernDraft, setConcernDraft] = useState("");
+  const [allergyDraft, setAllergyDraft] = useState("");
+
+  function commitConcern() {
+    const value = concernDraft.trim();
+    if (value && !concerns.some((c) => c.toLowerCase() === value.toLowerCase())) {
+      toggleConcern(value);
+    }
+    setConcernDraft("");
+    setShowConcernInput(false);
+  }
+
+  function commitAllergy() {
+    addAllergy(allergyDraft);
+    setAllergyDraft("");
+  }
 
   return (
     <div className={styles.page}>
@@ -98,10 +121,101 @@ export default function OnboardingPage() {
                   </button>
                 );
               })}
-              <button type="button" className={styles.chipAdd}>
-                + Add other concern
-              </button>
+
+              {/* Custom concerns the user added — click to remove. */}
+              {customConcerns.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`${styles.chip} ${styles.chipSelected}`}
+                  aria-pressed
+                  onClick={() => toggleConcern(c)}
+                >
+                  <CheckIcon />
+                  {c}
+                </button>
+              ))}
+
+              {showConcernInput ? (
+                <input
+                  type="text"
+                  className={styles.addInput}
+                  placeholder="Type a concern…"
+                  autoFocus
+                  autoComplete="off"
+                  value={concernDraft}
+                  onChange={(e) => setConcernDraft(e.target.value)}
+                  onBlur={commitConcern}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitConcern();
+                    } else if (e.key === "Escape") {
+                      setConcernDraft("");
+                      setShowConcernInput(false);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={styles.chipAdd}
+                  onClick={() => setShowConcernInput(true)}
+                >
+                  + Add other concern
+                </button>
+              )}
             </div>
+          </section>
+
+          <section className={styles.section}>
+            <h2 className={styles.question}>
+              Any ingredient allergies?{" "}
+              <span className={styles.hint}>(optional)</span>
+            </h2>
+            <p className={styles.subtext}>
+              We&apos;ll flag these on every product you scan.
+            </p>
+            <form
+              className={styles.addForm}
+              onSubmit={(e) => {
+                e.preventDefault();
+                commitAllergy();
+              }}
+            >
+              <input
+                type="text"
+                className={styles.addInput}
+                placeholder="e.g. fragrance, linalool"
+                autoComplete="off"
+                value={allergyDraft}
+                onChange={(e) => setAllergyDraft(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={!allergyDraft.trim()}
+              >
+                Add
+              </button>
+            </form>
+            {profile.allergies.length > 0 && (
+              <div className={styles.chips}>
+                {profile.allergies.map((a) => (
+                  <span key={a} className={styles.tagChip}>
+                    {a}
+                    <button
+                      type="button"
+                      className={styles.tagRemove}
+                      aria-label={`Remove ${a}`}
+                      onClick={() => removeAllergy(a)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
 
           <div className={styles.actions}>

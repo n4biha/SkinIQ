@@ -76,6 +76,8 @@ type ProfileContextValue = {
   hydrated: boolean;
   setSkinType: (type: SkinType) => void;
   toggleConcern: (concern: string) => void;
+  addAllergy: (term: string) => void;
+  removeAllergy: (term: string) => void;
   setProfile: (profile: SkinProfile) => void;
 };
 
@@ -176,6 +178,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         concerns: p.concerns.includes(concern)
           ? p.concerns.filter((c) => c !== concern)
           : [...p.concerns, concern],
+      })),
+    addAllergy: (term) =>
+      setProfileState((p) => {
+        const t = term.trim();
+        if (!t || p.allergies.some((a) => a.toLowerCase() === t.toLowerCase())) {
+          return p;
+        }
+        return { ...p, allergies: [...p.allergies, t] };
+      }),
+    removeAllergy: (term) =>
+      setProfileState((p) => ({
+        ...p,
+        allergies: p.allergies.filter((a) => a !== term),
       })),
     setProfile: (next) => setProfileState(next),
   };
