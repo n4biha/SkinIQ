@@ -4,9 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Stepper from "@/components/Stepper";
 import { useProfile } from "@/lib/profile-context";
+import CameraCapture from "./CameraCapture";
 import styles from "./scan.module.css";
 
 type View = "upload" | "analyzing";
+
+// Which input the user is using to get a photo. Both end in the same `file`/
+// `preview` state and the same Analyze flow.
+type Method = "upload" | "camera";
 
 const ANALYZE_STEPS = [
   "Reading ingredient list",
@@ -30,6 +35,7 @@ export default function ScanPage() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [method, setMethod] = useState<Method>("upload");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Scanning is step 2 — it needs a skin profile. If someone lands here without
@@ -50,6 +56,20 @@ export default function ScanPage() {
     e.preventDefault();
     setDragging(false);
     handleFile(e.dataTransfer.files?.[0]);
+  }
+
+  /** Clear the chosen image so the user can shoot/pick another. */
+  function reset() {
+    setPreview(null);
+    setFile(null);
+    setError(null);
+  }
+
+  /** Switch input method, starting that method fresh. Leaving the camera here
+   *  unmounts CameraCapture, which stops its stream (camera light off). */
+  function selectMethod(next: Method) {
+    setMethod(next);
+    reset();
   }
 
   async function onAnalyze() {
@@ -103,53 +123,76 @@ export default function ScanPage() {
       )}
 
       <div className={styles.grid}>
-        {/* Upload zone */}
+        {/* Input methods (upload + camera) → shared preview → Analyze */}
         <div>
-          <div
-            className={`${styles.dropzone} ${dragging ? styles.dragging : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            onClick={() => inputRef.current?.click()}
-            role="button"
-            tabIndex={0}
-          >
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="Selected label" className={styles.preview} />
-            ) : (
-              <>
-                <span className={styles.dropIcon}>
-                  <ImageIcon />
-                </span>
-                <p className={styles.dropTitle}>Upload photo</p>
-                <p className={styles.dropHint}>or drag and drop</p>
-                <p className={styles.dropMeta}>JPG, PNG up to 10MB</p>
-              </>
-            )}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
+          {/* Two ways to get the same photo. Switching resets any in-progress pick. */}
+          <div className={styles.methodToggle} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method === "upload"}
+              className={`${styles.methodBtn} ${
+                method === "upload" ? styles.methodActive : ""
+              }`}
+              onClick={() => selectMethod("upload")}
+            >
+              Upload photo
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method === "camera"}
+              className={`${styles.methodBtn} ${
+                method === "camera" ? styles.methodActive : ""
+              }`}
+              onClick={() => selectMethod("camera")}
+            >
+              Take photo
+            </button>
           </div>
+
+          {/* Once an image exists, both methods share this preview + Analyze. */}
+          {preview ? (
+            <div className={styles.previewWrap}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview} alt="Selected label" className={styles.preview} />
+            </div>
+          ) : method === "upload" ? (
+            <div
+              className={`${styles.dropzone} ${dragging ? styles.dragging : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              onClick={() => inputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+            >
+              <span className={styles.dropIcon}>
+                <ImageIcon />
+              </span>
+              <p className={styles.dropTitle}>Upload photo</p>
+              <p className={styles.dropHint}>or drag and drop</p>
+              <p className={styles.dropMeta}>JPG, PNG up to 10MB</p>
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+            </div>
+          ) : (
+            // Camera capture funnels into the same handleFile as upload.
+            <CameraCapture onCapture={handleFile} />
+          )}
 
           <div className={styles.uploadActions}>
             {preview && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setPreview(null);
-                  setFile(null);
-                }}
-              >
-                Choose another
+              <button type="button" className="btn btn-secondary" onClick={reset}>
+                {method === "camera" ? "Retake" : "Choose another"}
               </button>
             )}
             <button

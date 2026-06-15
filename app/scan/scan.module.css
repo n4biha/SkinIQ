@@ -98,6 +98,97 @@
   cursor: not-allowed;
 }
 
+/* ---- Method toggle (Upload / Take photo) ---- */
+
+.methodToggle {
+  display: inline-flex;
+  gap: var(--space-2);
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  margin-bottom: var(--space-4);
+}
+
+.methodBtn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.methodBtn:hover {
+  color: var(--green-dark);
+}
+
+.methodActive {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+/* ---- Shared preview (used by both upload + camera) ---- */
+
+.previewWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---- Camera capture ---- */
+
+.camera {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 320px;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  justify-content: center;
+}
+
+.video {
+  width: 100%;
+  max-height: 280px;
+  border-radius: var(--radius-sm);
+  background: #000;
+  object-fit: cover;
+}
+
+.cameraActions {
+  display: flex;
+  justify-content: center;
+}
+
+.cameraStatus {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.cameraNote {
+  font-size: 14px;
+  color: var(--flag);
+  text-align: center;
+  max-width: 36ch;
+}
+
+.cameraFallback {
+  cursor: pointer;
+}
+
 /* ---- Example card ---- */
 
 .example {
