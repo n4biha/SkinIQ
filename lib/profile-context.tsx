@@ -19,7 +19,7 @@ const SUPABASE_ENABLED =
   Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
   Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-const EMPTY_PROFILE: SkinProfile = {
+export const EMPTY_PROFILE: SkinProfile = {
   skinType: null,
   sensitive: false,
   concerns: [],
