@@ -28,6 +28,7 @@ const EXT_BY_MIME: Record<string, string> = {
 export async function saveScan(
   base64: string,
   mimeType: string,
+  ownerId: string,
 ): Promise<string | null> {
   try {
     const sb = getServerSupabase();
@@ -45,7 +46,9 @@ export async function saveScan(
     }
 
     // image_url holds the storage PATH (private bucket — we sign it on read).
-    const { error } = await sb.from("scans").insert({ id: scanId, image_url: path });
+    const { error } = await sb
+      .from("scans")
+      .insert({ id: scanId, image_url: path, user_id: ownerId });
     if (error) {
       console.warn("[storage] scans insert failed:", error.message);
       return null;

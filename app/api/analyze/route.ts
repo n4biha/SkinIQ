@@ -19,6 +19,7 @@ import { scoreProduct, type ScoringResult } from "@/lib/scoring";
 import { resolveIngredients } from "@/lib/ingredients/resolve";
 import { putReport } from "@/lib/report-store";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { getUser } from "@/lib/supabase-server";
 import { saveScan } from "@/lib/storage";
 import {
   ReportSchema,
@@ -176,13 +177,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // 6) Upload the photo to Storage + create a scans row (best-effort), then store
-  //    the report linked to it. An image failure is non-fatal — the scan still works.
+  // 6) Persist only for a signed-in user: upload the photo + save the report to
+  //    their account. Guests get a working report (kept in memory for this session)
+  //    but nothing is saved. An image failure is non-fatal.
+  const user = await getUser();
   let scanId: string | undefined;
-  if (isSupabaseConfigured()) {
-    scanId = (await saveScan(image, mimeType)) ?? undefined;
+  if (user && isSupabaseConfigured()) {
+    scanId = (await saveScan(image, mimeType, user.id)) ?? undefined;
   }
-  await putReport(validated.data, scanId);
+  await putReport(validated.data, { ownerId: user?.id, scanId });
 
   return NextResponse.json({ id: validated.data.id, report: validated.data });
 }

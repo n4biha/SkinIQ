@@ -1,17 +1,14 @@
 /**
- * Tier 2 — CosIng dataset lookup (Phase B+, step 2).
+ * Tier 2 — CosIng dataset lookup.
  *
- * Broad, deterministic, offline coverage from the EU CosIng open dataset
- * (INCI name + functions), folded into our IngredientInfo via function-map.ts.
- *
- * The table (lib/data/cosing.json) is read from disk once via fs (NOT a static
- * import) so the ~2MB file isn't bundled into the route, then cached in a
- * globalThis Map. TODO Phase C: move into the Supabase `ingredients` table.
+ * Broad, offline, deterministic coverage from the EU CosIng open dataset (INCI +
+ * functions), folded into a graded IngredientInfo via function-map.ts. The table
+ * (lib/data/cosing.json) is read from disk once and cached in a globalThis Map.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Concern } from "@/lib/types";
+import type { Concern, HelpStrength, IrritationRisk } from "@/lib/types";
 import type { IngredientInfo } from "@/lib/ingredients/types";
 import { FUNCTION_MAP } from "@/lib/ingredients/function-map";
 
@@ -39,18 +36,24 @@ function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Short chemistry acronyms to keep uppercase after title-casing INCI names.
 const ACRONYMS = new Set([
   "EDTA", "PCA", "PEG", "PPG", "PVP", "PG", "AHA", "BHA", "HA", "DMDM",
   "MEA", "DEA", "TEA", "EDDS", "SLS", "SLES", "UV", "C", "EGF",
 ]);
 
-/** Title-case an (often all-caps) CosIng INCI name, restoring known acronyms. */
 function titleCaseInci(name: string): string {
   return titleCase(name)
     .split(/(\s|\/|-)/)
     .map((tok) => (ACRONYMS.has(tok.toUpperCase()) ? tok.toUpperCase() : tok))
     .join("");
+}
+
+const RISK_ORDER: IrritationRisk[] = ["none", "low", "medium", "high"];
+function maxRisk(a: IrritationRisk, b: IrritationRisk): IrritationRisk {
+  return RISK_ORDER.indexOf(b) > RISK_ORDER.indexOf(a) ? b : a;
+}
+function strongest(a: HelpStrength | undefined, b: HelpStrength): HelpStrength {
+  return a === "strong" || b === "strong" ? "strong" : "moderate";
 }
 
 /** Tier 2 lookup against the CosIng table. Returns undefined when absent. */
@@ -62,15 +65,18 @@ export function lookupCosing(normalized: string): IngredientInfo | undefined {
   const [display, ...functions] = entry;
   if (functions.length === 0) return undefined;
 
-  const benefits = new Set<Concern>();
-  let isIrritant = false;
-  let isFragrance = false;
+  const helps: Partial<Record<Concern, HelpStrength>> = {};
+  let irritation: IrritationRisk = "none";
   for (const f of functions) {
     const rule = FUNCTION_MAP[f];
     if (!rule) continue;
-    rule.benefitsFor?.forEach((c) => benefits.add(c));
-    if (rule.isIrritant) isIrritant = true;
-    if (rule.isFragrance) isFragrance = true;
+    for (const [concern, strength] of Object.entries(rule.helps ?? {}) as [
+      Concern,
+      HelpStrength,
+    ][]) {
+      helps[concern] = strongest(helps[concern], strength);
+    }
+    if (rule.irritation) irritation = maxRisk(irritation, rule.irritation);
   }
 
   // Label with the first *meaningful* function, not a generic one like MASKING.
@@ -79,10 +85,10 @@ export function lookupCosing(normalized: string): IngredientInfo | undefined {
   return {
     display: titleCaseInci(display || normalized),
     function: titleCase(labelFn),
-    benefitsFor: [...benefits],
+    helps,
+    irritation,
     comedogenic: 0, // CosIng has no comedogenic data; curated/Gemini cover those.
-    isIrritant: isIrritant || undefined,
-    isFragrance: isFragrance || undefined,
+    fragrance: false,
     note: `Listed in the EU CosIng database (${functions
       .slice(0, 3)
       .map((f) => f.toLowerCase())

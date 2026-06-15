@@ -1,23 +1,27 @@
 /**
- * Shared shapes for the three-tier ingredient resolver (Phase B+).
+ * Shared shapes for the three-tier ingredient resolver.
+ *
+ * Graded model: each ingredient says how strongly it HELPS each concern
+ * (strong/moderate) and its IRRITATION risk (none/low/medium/high). Scoring
+ * combines these deterministically.
  */
 
-import type { Concern } from "@/lib/types";
+import type { Concern, HelpStrength, IrritationRisk } from "@/lib/types";
 
-/** A resolved ingredient classification — what scoring.ts consumes. */
+/** A resolved, graded ingredient — what scoring.ts consumes. */
 export type IngredientInfo = {
   /** Display name in readable casing. */
   display: string;
   /** Short function label, e.g. "Oil control, brightening". */
   function: string;
-  /** Concerns this ingredient is known to help. */
-  benefitsFor: Concern[];
+  /** Per-concern help strength (omit a concern it doesn't help). */
+  helps: Partial<Record<Concern, HelpStrength>>;
+  /** Irritation risk. */
+  irritation: IrritationRisk;
   /** Comedogenic rating 0–5 (pore-clogging potential). */
   comedogenic: number;
-  /** AHAs, BHAs, retinoids, denatured alcohol, etc. */
-  isIrritant?: boolean;
   /** Fragrance / essential oil / known fragrance allergen. */
-  isFragrance?: boolean;
+  fragrance: boolean;
   /** A short, neutral note. */
   note: string;
 };

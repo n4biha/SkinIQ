@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 import styles from "./Sidebar.module.css";
 
 type NavItem = {
@@ -72,6 +74,23 @@ const NAV: NavItem[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setEmail(session?.user?.email ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  async function signOut() {
+    await createBrowserSupabase().auth.signOut();
+    setEmail(null);
+    router.refresh();
+  }
 
   return (
     <aside className={styles.sidebar}>
@@ -110,6 +129,23 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      <div className={styles.authFooter}>
+        {email ? (
+          <>
+            <span className={styles.authEmail} title={email}>
+              {email}
+            </span>
+            <button type="button" className={styles.authBtn} onClick={signOut}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <Link href="/login" className={styles.authBtn}>
+            Sign in
+          </Link>
+        )}
+      </div>
     </aside>
   );
 }

@@ -36,10 +36,11 @@ function formatDate(iso: string): string {
 }
 
 /** Report (camelCase) -> results row (snake_case). */
-function reportToRow(r: Report, scanId?: string) {
+function reportToRow(r: Report, opts: { ownerId?: string; scanId?: string }) {
   return {
     id: r.id,
-    scan_id: scanId ?? null,
+    user_id: opts.ownerId ?? null,
+    scan_id: opts.scanId ?? null,
     product_name: r.productName,
     overall_score: r.overallScore,
     verdict: r.verdict,
@@ -73,15 +74,19 @@ function rowToReport(row: Record<string, unknown>, imageUrl?: string): Report {
   });
 }
 
-/** Store a report (DB if configured, always in memory) and return its id.
- *  `scanId` links the report to its uploaded photo (Phase C3). */
-export async function putReport(report: Report, scanId?: string): Promise<string> {
+/** Store a report. Always kept in memory (covers same-process reads). Persisted to
+ *  the DB only for a signed-in user (`opts.ownerId`) — guests' scans don't save.
+ *  `opts.scanId` links the report to its uploaded photo (Phase C3). */
+export async function putReport(
+  report: Report,
+  opts: { ownerId?: string; scanId?: string } = {},
+): Promise<string> {
   reports.set(report.id, report);
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && opts.ownerId) {
     const { error } = await getServerSupabase()
       .from(TABLE)
-      .insert(reportToRow(report, scanId));
+      .insert(reportToRow(report, opts));
     if (error) {
       console.warn("[report-store] DB insert failed, kept in memory:", error.message);
     }
@@ -99,12 +104,16 @@ export type HistoryItem = {
   imageUrl?: string;
 };
 
-/** List past reports, newest first — from the DB if configured, else in-memory. */
-export async function listReports(limit = 50): Promise<HistoryItem[]> {
+/** List a user's past reports, newest first. Returns [] for guests when a DB is
+ *  configured (their scans aren't saved). Falls back to the in-memory list when
+ *  Supabase isn't configured (local dev without a DB). */
+export async function listReports(ownerId?: string, limit = 50): Promise<HistoryItem[]> {
   if (isSupabaseConfigured()) {
+    if (!ownerId) return [];
     const { data, error } = await getServerSupabase()
       .from(TABLE)
       .select("id, product_name, overall_score, verdict, created_at, scans(image_url)")
+      .eq("user_id", ownerId)
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) {

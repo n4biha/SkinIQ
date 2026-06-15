@@ -17,17 +17,22 @@ import { lookupCosing } from "@/lib/ingredients/cosing";
 import { getCached, putCached } from "@/lib/ingredients/store";
 import { classifyIngredients } from "@/lib/gemini";
 import type { IngredientInfo, ResolvedIngredient } from "@/lib/ingredients/types";
-import type { IngredientClassification } from "@/lib/types";
+import type { Concern, HelpStrength, IngredientAssessment } from "@/lib/types";
 
-function toInfo(c: IngredientClassification): IngredientInfo {
+function toInfo(a: IngredientAssessment): IngredientInfo {
+  const helps: Partial<Record<Concern, HelpStrength>> = {};
+  for (const h of a.helps) {
+    helps[h.concern] =
+      helps[h.concern] === "strong" || h.strength === "strong" ? "strong" : "moderate";
+  }
   return {
-    display: c.name.trim() || "Ingredient",
-    function: c.function,
-    benefitsFor: c.benefitsFor,
-    comedogenic: c.comedogenic,
-    isIrritant: c.isIrritant || undefined,
-    isFragrance: c.isFragrance || undefined,
-    note: c.note,
+    display: a.name.trim() || "Ingredient",
+    function: a.function,
+    helps,
+    irritation: a.irritation,
+    comedogenic: a.comedogenic,
+    fragrance: a.fragrance,
+    note: a.note,
   };
 }
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useProfile } from "@/lib/profile-context";
 import type { SkinType } from "@/lib/types";
+import AccountCard from "./AccountCard";
 import styles from "./profile.module.css";
 
 const SKIN_TYPE_LABELS: Record<SkinType, string> = {
@@ -31,7 +32,8 @@ export default function ProfilePage() {
     return (
       <div className={styles.page}>
         <h1 className={styles.heading}>Profile</h1>
-        <p className={styles.subtext}>You haven&apos;t set up your profile yet.</p>
+        <AccountCard />
+        <p className={styles.subtext}>You haven&apos;t set up your skin profile yet.</p>
         <div className={styles.empty}>
           <p className={styles.emptyText}>
             Build your skin profile so we can personalize every ingredient review.
@@ -49,12 +51,14 @@ export default function ProfilePage() {
       <div className={styles.headerRow}>
         <div>
           <h1 className={styles.heading}>Profile</h1>
-          <p className={styles.subtext}>Your saved skin profile.</p>
+          <p className={styles.subtext}>Your account and saved skin profile.</p>
         </div>
         <Link href="/onboarding" className="btn btn-secondary">
           Edit profile
         </Link>
       </div>
+
+      <AccountCard />
 
       <section className={`card ${styles.card}`}>
         <h2 className={styles.label}>Skin type</h2>

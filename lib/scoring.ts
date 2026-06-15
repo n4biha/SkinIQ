@@ -1,18 +1,25 @@
 /**
- * SkinIQ scoring engine (Phase B · B3, refactored in B+).
+ * SkinIQ scoring engine.
  *
  * THE RULES LIVE HERE. The overall match score and per-concern percentages are
- * computed deterministically from the resolved ingredient classifications + the
- * user's skin profile. The model never invents a number — the same product +
- * same profile must always produce the same result.
+ * computed deterministically from the resolved, GRADED ingredient assessments
+ * (helps: strong/moderate per concern; irritation: none/low/medium/high) + the
+ * user's profile. The model grades ingredients; it never sets a number. Same
+ * inputs -> identical output (pure, synchronous, no I/O).
  *
- * Ingredient classification (which concerns an ingredient helps, irritancy, etc.)
- * is resolved upstream by the three-tier resolver (lib/ingredients/resolve.ts)
- * and passed in as `resolved`. This module stays PURE and synchronous: no Date,
- * no Math.random, no I/O, no model calls.
+ * Calibrated to grade strictly: products only earn high scores when they have
+ * strong actives for the concerns the user actually selected and few negatives.
  */
 
-import type { Concern, ConcernScore, IngredientNote, SkinProfile, Verdict } from "@/lib/types";
+import type {
+  Concern,
+  ConcernScore,
+  HelpStrength,
+  IngredientNote,
+  IrritationRisk,
+  SkinProfile,
+  Verdict,
+} from "@/lib/types";
 import type { ResolvedIngredient } from "@/lib/ingredients/types";
 import { normalizeName } from "@/lib/ingredients/normalize";
 
@@ -20,7 +27,6 @@ import { normalizeName } from "@/lib/ingredients/normalize";
 /* Canonical concern model                                             */
 /* ------------------------------------------------------------------ */
 
-/** Human-friendly label per concern, used for the "Best for your concerns" bars. */
 const CONCERN_LABELS: Record<Concern, string> = {
   acne: "Acne",
   oiliness: "Oiliness",
@@ -31,6 +37,17 @@ const CONCERN_LABELS: Record<Concern, string> = {
   sensitivity: "Sensitivity",
   "fine-lines": "Fine lines",
 };
+
+const CONCERN_ORDER: Concern[] = [
+  "acne",
+  "oiliness",
+  "redness",
+  "pores",
+  "dryness",
+  "dark-spots",
+  "sensitivity",
+  "fine-lines",
+];
 
 /** Map the onboarding's free-text concern labels to canonical concerns. */
 function normalizeConcern(raw: string): Concern | null {
@@ -48,19 +65,22 @@ function normalizeConcern(raw: string): Concern | null {
   return null;
 }
 
-/**
- * Resolve which concerns the report should score for: the user's selected
- * concerns, plus implicit concerns derived from skin type so the bars stay
- * meaningful when the user picked few. Falls back to a default set.
- */
-function resolveConcerns(profile: SkinProfile): Concern[] {
+/** The concerns the user explicitly selected (deduped, canonical). */
+function selectedConcerns(profile: SkinProfile): Concern[] {
   const set = new Set<Concern>();
-
   for (const raw of profile.concerns) {
     const c = normalizeConcern(raw);
     if (c) set.add(c);
   }
+  return CONCERN_ORDER.filter((c) => set.has(c));
+}
 
+/**
+ * Concerns to DISPLAY as bars: the user's selections plus skin-type-implied ones,
+ * so the bars stay meaningful. (Scoring rewards only the explicit selections.)
+ */
+function displayConcerns(profile: SkinProfile): Concern[] {
+  const set = new Set<Concern>(selectedConcerns(profile));
   switch (profile.skinType) {
     case "oily":
       set.add("oiliness");
@@ -78,24 +98,8 @@ function resolveConcerns(profile: SkinProfile): Concern[] {
     default:
       break;
   }
-
-  if (set.size === 0) {
-    // No profile signal yet — show a sensible default spread.
-    return ["acne", "oiliness", "redness", "pores", "sensitivity"];
-  }
-
-  // Stable, readable ordering regardless of insertion order.
-  const ORDER: Concern[] = [
-    "acne",
-    "oiliness",
-    "redness",
-    "pores",
-    "dryness",
-    "dark-spots",
-    "sensitivity",
-    "fine-lines",
-  ];
-  return ORDER.filter((c) => set.has(c));
+  if (set.size === 0) return ["acne", "oiliness", "redness", "pores", "sensitivity"];
+  return CONCERN_ORDER.filter((c) => set.has(c));
 }
 
 /* ------------------------------------------------------------------ */
@@ -108,7 +112,6 @@ export type ScoringResult = {
   overallScore: number;
   verdict: Verdict;
   concernScores: ConcernScore[];
-  /** Per-ingredient classification + flag. `note` text is from the resolver. */
   ingredients: IngredientNote[];
 };
 
@@ -118,7 +121,40 @@ type MatchedIngredient = {
   isAllergyHit: boolean;
 };
 
-/** Does any user allergy term appear in this ingredient string (either direction)? */
+const RISK_RANK: Record<IrritationRisk, number> = { none: 0, low: 1, medium: 2, high: 3 };
+
+/** Strongest help any ingredient offers for a concern (or null if none). */
+function bestHelp(matched: MatchedIngredient[], concern: Concern): HelpStrength | null {
+  let best: HelpStrength | null = null;
+  for (const m of matched) {
+    const s = m.info?.helps[concern];
+    if (s === "strong") return "strong";
+    if (s === "moderate") best = "moderate";
+  }
+  return best;
+}
+
+function maxIrritation(matched: MatchedIngredient[]): IrritationRisk {
+  let worst: IrritationRisk = "none";
+  for (const m of matched) {
+    if (m.info && RISK_RANK[m.info.irritation] > RISK_RANK[worst]) worst = m.info.irritation;
+  }
+  return worst;
+}
+
+function irritationPenalty(risk: IrritationRisk, sensitive: boolean): number {
+  switch (risk) {
+    case "high":
+      return sensitive ? 2.5 : 1.5;
+    case "medium":
+      return sensitive ? 1.5 : 0.75;
+    case "low":
+      return sensitive ? 0.5 : 0;
+    default:
+      return 0;
+  }
+}
+
 function isAllergyHit(name: string, allergies: string[]): boolean {
   const n = normalizeName(name);
   return allergies.some((a) => {
@@ -128,31 +164,32 @@ function isAllergyHit(name: string, allergies: string[]): boolean {
 }
 
 function verdictFor(score: number): Verdict {
-  if (score >= 7) return "Good Match";
-  if (score >= 4.5) return "Fair Match";
+  if (score >= 8) return "Good Match";
+  if (score >= 5.5) return "Fair Match";
   return "Poor Match";
 }
 
 /**
- * Compute the deterministic parts of a Report from the resolved ingredients +
- * profile. Pure: same inputs -> identical output.
- *
- * @param resolved ingredient classifications from lib/ingredients/resolve.ts,
- *                 aligned 1:1 (same order) with the label's ingredient list.
+ * Compute the deterministic parts of a Report from the resolved (graded)
+ * ingredients + profile. Pure: same inputs -> identical output.
  */
 export function scoreProduct(
   profile: SkinProfile,
   resolved: ResolvedIngredient[],
 ): ScoringResult {
   const allergies = profile.allergies ?? [];
-  const concerns = resolveConcerns(profile);
-  const userConcernSet = new Set(concerns);
+  const selected = selectedConcerns(profile);
+  const display = displayConcerns(profile);
+  // Score against explicit selections; fall back to the display set if none.
+  const scoredConcerns = selected.length ? selected : display;
+  const selectedSet = new Set(scoredConcerns);
+
   const sensitiveSkin =
     profile.skinType === "sensitive" ||
-    userConcernSet.has("sensitivity") ||
-    userConcernSet.has("redness");
+    selectedSet.has("sensitivity") ||
+    selectedSet.has("redness");
   const acneProne =
-    userConcernSet.has("acne") ||
+    selectedSet.has("acne") ||
     profile.skinType === "oily" ||
     profile.skinType === "combination";
 
@@ -162,56 +199,62 @@ export function scoreProduct(
     isAllergyHit: isAllergyHit(r.raw, allergies),
   }));
 
-  /* ---- Per-concern percentages ---- */
-  const concernScores: ConcernScore[] = concerns.map((concern) => {
-    let percent = 40; // neutral baseline
-
-    for (const m of matched) {
-      if (m.info?.benefitsFor.includes(concern)) percent += 20;
-      // Irritants/fragrance read as worse for the calming concerns.
-      if (
-        (concern === "sensitivity" || concern === "redness") &&
-        (m.info?.isIrritant || m.info?.isFragrance)
-      ) {
-        percent -= 15;
-      }
-    }
-    if (matched.some((m) => m.isAllergyHit)) percent -= 20;
-
-    return { label: CONCERN_LABELS[concern], percent: Math.round(clamp(percent, 5, 95)) };
-  });
+  const worstIrritation = maxIrritation(matched);
+  const hasFragrance = matched.some((m) => m.info?.fragrance);
+  const maxComedogenic = matched.reduce(
+    (max, m) => Math.max(max, m.info?.comedogenic ?? 0),
+    0,
+  );
+  const allergyHits = matched.filter((m) => m.isAllergyHit).length;
 
   /* ---- Overall score (0–10) ---- */
-  let score = 5.0; // neutral starting point
+  let score = 5.0;
 
-  // Reward each of the user's concerns that at least one ingredient addresses.
-  for (const concern of concerns) {
-    if (!userConcernSet.has(concern)) continue;
-    if (matched.some((m) => m.info?.benefitsFor.includes(concern))) score += 1.0;
+  // Reward strong/moderate help for selected concerns; penalize ignored ones.
+  for (const concern of scoredConcerns) {
+    const best = bestHelp(matched, concern);
+    score += best === "strong" ? 1.5 : best === "moderate" ? 0.75 : -1.0;
   }
 
-  for (const m of matched) {
-    if (!m.info) continue;
-    if (m.info.isFragrance && sensitiveSkin) score -= 1.0;
-    if (m.info.isIrritant && sensitiveSkin) score -= 0.5;
-    if (m.info.comedogenic >= 3 && acneProne) score -= 0.5;
+  score -= irritationPenalty(worstIrritation, sensitiveSkin);
+  if (hasFragrance) score -= sensitiveSkin ? 2.0 : 1.0;
+  if (acneProne) {
+    if (maxComedogenic >= 4) score -= 1.5;
+    else if (maxComedogenic >= 2) score -= 0.75;
   }
-
-  // Hard penalty for any allergen the user listed.
-  const allergyHits = matched.filter((m) => m.isAllergyHit).length;
-  score -= allergyHits * 3.0;
+  score -= allergyHits * 4.0;
 
   score = Math.round(clamp(score, 0, 10) * 10) / 10;
   const verdict = verdictFor(score);
 
+  /* ---- Per-concern percentages (display set) ---- */
+  const concernScores: ConcernScore[] = display.map((concern) => {
+    let percent = 30;
+    const best = bestHelp(matched, concern);
+    if (best === "strong") percent += 35;
+    else if (best === "moderate") percent += 20;
+
+    if (
+      (concern === "sensitivity" || concern === "redness") &&
+      (RISK_RANK[worstIrritation] >= RISK_RANK.medium || hasFragrance)
+    ) {
+      percent -= 20;
+    }
+    if (allergyHits > 0) percent -= 25;
+
+    return { label: CONCERN_LABELS[concern], percent: Math.round(clamp(percent, 5, 95)) };
+  });
+
   /* ---- Per-ingredient notes + flags ---- */
   const ingredients: IngredientNote[] = matched.map((m) => {
+    const info = m.info;
     const benefitsUser =
-      !!m.info && m.info.benefitsFor.some((c) => userConcernSet.has(c));
+      !!info && Object.keys(info.helps).some((c) => selectedSet.has(c as Concern));
     const isCaution =
-      !!m.info &&
-      (((m.info.isIrritant || m.info.isFragrance) && sensitiveSkin) ||
-        (m.info.comedogenic >= 3 && acneProne));
+      !!info &&
+      (RISK_RANK[info.irritation] >= RISK_RANK.medium ||
+        (info.fragrance && sensitiveSkin) ||
+        (info.comedogenic >= 3 && acneProne));
 
     let flag: IngredientNote["flag"];
     if (m.isAllergyHit) flag = "flag";
@@ -219,11 +262,11 @@ export function scoreProduct(
     else if (isCaution) flag = "caution";
 
     return {
-      name: m.info?.display ?? m.raw,
-      function: m.info?.function ?? "Unrecognized ingredient",
+      name: info?.display ?? m.raw,
+      function: info?.function ?? "Unrecognized ingredient",
       note: m.isAllergyHit
         ? "Matches one of your listed allergies — avoid."
-        : m.info?.note ?? "Not in our reference set yet.",
+        : info?.note ?? "Not in our reference set yet.",
       ...(flag ? { flag } : {}),
     };
   });

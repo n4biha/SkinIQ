@@ -1,40 +1,37 @@
 /**
- * Tier 2 — CosIng function → our classification (Phase B+, step 2).
+ * Tier 2 — CosIng function → graded contributions.
  *
- * CosIng lists each ingredient's functions from a controlled vocabulary, often
- * several per ingredient. We map ONLY specific, reliable functions to a concern
- * or flag. Generic/noisy functions that co-occur on benign ingredients
- * (SKIN CONDITIONING, MASKING, DENATURANT, SOLVENT, PRESERVATIVE, SURFACTANT,
- * VISCOSITY CONTROLLING, BUFFERING, CHELATING, FILM FORMING, …) are deliberately
- * left unmapped: the ingredient still gets a function label, just no score credit.
- * This avoids inflating or mis-flagging products (e.g. glycerin lists PERFUMING +
- * DENATURANT in CosIng — mapping those would be wrong).
+ * Only specific, reliable functions map to a concern (default strength
+ * "moderate") or an irritation level. Generic/noisy functions (SKIN CONDITIONING,
+ * MASKING, PERFUMING, DENATURANT, SOLVENT, PRESERVATIVE, SURFACTANT, …) are left
+ * unmapped — they'd mis-grade benign ingredients. Curated (Tier 1) and Gemini
+ * (Tier 3) handle nuance like fragrance and strong actives.
  */
 
-import type { Concern } from "@/lib/types";
+import type { Concern, HelpStrength, IrritationRisk } from "@/lib/types";
 
 type FunctionRule = {
-  benefitsFor?: Concern[];
-  isIrritant?: boolean;
-  isFragrance?: boolean;
+  helps?: Partial<Record<Concern, HelpStrength>>;
+  irritation?: IrritationRisk;
 };
 
 export const FUNCTION_MAP: Record<string, FunctionRule> = {
-  HUMECTANT: { benefitsFor: ["dryness"] },
-  MOISTURISING: { benefitsFor: ["dryness"] },
-  EMOLLIENT: { benefitsFor: ["dryness"] },
-  REFATTING: { benefitsFor: ["dryness"] },
-  SOOTHING: { benefitsFor: ["sensitivity", "redness"] },
-  ANTIOXIDANT: { benefitsFor: ["fine-lines", "dark-spots"] },
-  ANTISEBORRHOEIC: { benefitsFor: ["oiliness", "acne"] },
-  ASTRINGENT: { benefitsFor: ["oiliness", "pores"] },
-  SMOOTHING: { benefitsFor: ["fine-lines"] },
-  BLEACHING: { benefitsFor: ["dark-spots"] },
-  EXFOLIATING: { benefitsFor: ["acne", "pores", "dark-spots"], isIrritant: true },
-  KERATOLYTIC: { benefitsFor: ["acne", "pores", "dark-spots"], isIrritant: true },
-  // NOTE: PERFUMING and MASKING are intentionally NOT mapped to isFragrance.
-  // CosIng tags many benign ingredients (emollients like caprylic/capric
-  // triglyceride, even glycerin) with these, so using them would mis-flag.
-  // Real fragrance is handled by the curated tier (parfum + common allergens)
-  // and the Gemini tier.
+  HUMECTANT: { helps: { dryness: "moderate" } },
+  MOISTURISING: { helps: { dryness: "moderate" } },
+  EMOLLIENT: { helps: { dryness: "moderate" } },
+  REFATTING: { helps: { dryness: "moderate" } },
+  SOOTHING: { helps: { sensitivity: "moderate", redness: "moderate" } },
+  ANTIOXIDANT: { helps: { "fine-lines": "moderate", "dark-spots": "moderate" } },
+  ANTISEBORRHOEIC: { helps: { oiliness: "moderate", acne: "moderate" } },
+  ASTRINGENT: { helps: { oiliness: "moderate", pores: "moderate" }, irritation: "low" },
+  SMOOTHING: { helps: { "fine-lines": "moderate" } },
+  BLEACHING: { helps: { "dark-spots": "moderate" } },
+  EXFOLIATING: {
+    helps: { acne: "moderate", pores: "moderate", "dark-spots": "moderate" },
+    irritation: "medium",
+  },
+  KERATOLYTIC: {
+    helps: { acne: "moderate", pores: "moderate", "dark-spots": "moderate" },
+    irritation: "medium",
+  },
 };

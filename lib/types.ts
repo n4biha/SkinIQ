@@ -36,18 +36,27 @@ export const ConcernSchema = z.enum([
   "fine-lines",
 ]);
 
+/** How strongly an ingredient helps a concern, and how irritating it is. */
+export const HelpStrengthSchema = z.enum(["strong", "moderate"]);
+export const IrritationRiskSchema = z.enum(["none", "low", "medium", "high"]);
+
+export const IngredientHelpSchema = z.object({
+  concern: ConcernSchema,
+  strength: HelpStrengthSchema,
+});
+
 /**
- * The fixed fields an ingredient is classified into — by the curated map, the
- * CosIng tier, or the Gemini fallback (B+). Scoring consumes ONLY these fields;
- * the model fills them in but never produces a score.
+ * The graded assessment an ingredient gets — from the curated map, the CosIng
+ * tier, or the Gemini judgment (temp 0, cached). Scoring consumes ONLY these
+ * fields; the model grades ingredients but never produces a score.
  */
-export const IngredientClassificationSchema = z.object({
+export const IngredientAssessmentSchema = z.object({
   name: z.string(),
   function: z.string(),
-  benefitsFor: z.array(ConcernSchema),
+  helps: z.array(IngredientHelpSchema),
+  irritation: IrritationRiskSchema,
   comedogenic: z.number().int().min(0).max(5),
-  isIrritant: z.boolean(),
-  isFragrance: z.boolean(),
+  fragrance: z.boolean(),
   note: z.string(),
 });
 
@@ -117,4 +126,6 @@ export type LabelReading = z.infer<typeof LabelReadingSchema>;
 export type Report = z.infer<typeof ReportSchema>;
 export type ReportCopy = z.infer<typeof ReportCopySchema>;
 export type Concern = z.infer<typeof ConcernSchema>;
-export type IngredientClassification = z.infer<typeof IngredientClassificationSchema>;
+export type HelpStrength = z.infer<typeof HelpStrengthSchema>;
+export type IrritationRisk = z.infer<typeof IrritationRiskSchema>;
+export type IngredientAssessment = z.infer<typeof IngredientAssessmentSchema>;

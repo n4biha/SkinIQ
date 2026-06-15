@@ -17,10 +17,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
 import {
   ConcernSchema,
-  IngredientClassificationSchema,
+  IngredientAssessmentSchema,
   LabelReadingSchema,
   ReportCopySchema,
-  type IngredientClassification,
+  type IngredientAssessment,
   type LabelReading,
   type ReportCopy,
   type SkinProfile,
@@ -233,9 +233,14 @@ export async function writeReportCopy(
     "You are SkinIQ, writing the explanation copy for a skincare match report. " +
     "The match score and percentages have ALREADY been computed by our rules " +
     "engine and are final — your job is ONLY to write the words that explain " +
-    "them. Do not output, restate, or change any number. Be warm, clear and " +
-    "honest; frame it as fit-for-this-person, not a product grade. Base every " +
-    "point on the ingredients and flags provided. Here is the data:\n" +
+    "them. Do not output, restate, or change any number.\n" +
+    "Be CANDID, not flattering. Lead with honest trade-offs. If the match is " +
+    "fair or poor, say so plainly and explain why (missing actives for their " +
+    "concerns, irritation/fragrance risk, comedogenic ingredients, etc.). Don't " +
+    "oversell a mediocre product or pad it with empty praise — keep it kind but " +
+    "truthful, and make the cautions specific and substantive. Frame it as " +
+    "fit-for-this-person. Base every point on the ingredients and flags provided. " +
+    "Here is the data:\n" +
     JSON.stringify(context);
 
   const text = await withRetry(async () => {
@@ -271,7 +276,7 @@ const CLASSIFY_SCHEMA = {
   properties: {
     items: {
       type: Type.ARRAY,
-      description: "One classification per input ingredient, in the same order.",
+      description: "One graded assessment per input ingredient, in the same order.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -280,26 +285,36 @@ const CLASSIFY_SCHEMA = {
             type: Type.STRING,
             description: "Short cosmetic function, e.g. 'Humectant' or 'Emollient'.",
           },
-          benefitsFor: {
+          helps: {
             type: Type.ARRAY,
-            description: "Skin concerns this ingredient meaningfully helps (may be empty).",
-            items: { type: Type.STRING, format: "enum", enum: [...ConcernSchema.options] },
+            description:
+              "Concerns this ingredient helps, each graded. Omit concerns it doesn't help.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                concern: { type: Type.STRING, format: "enum", enum: [...ConcernSchema.options] },
+                strength: { type: Type.STRING, format: "enum", enum: ["strong", "moderate"] },
+              },
+              required: ["concern", "strength"],
+            },
+          },
+          irritation: {
+            type: Type.STRING,
+            format: "enum",
+            enum: ["none", "low", "medium", "high"],
+            description: "Irritation/sensitization risk.",
           },
           comedogenic: {
             type: Type.INTEGER,
             description: "Pore-clogging potential, 0 (none) to 5 (high).",
           },
-          isIrritant: {
-            type: Type.BOOLEAN,
-            description: "True for AHAs/BHAs/retinoids/denatured alcohol and other common irritants.",
-          },
-          isFragrance: {
+          fragrance: {
             type: Type.BOOLEAN,
             description: "True for fragrance, parfum, essential oils and fragrance allergens.",
           },
           note: { type: Type.STRING, description: "One short, factual sentence." },
         },
-        required: ["name", "function", "benefitsFor", "comedogenic", "isIrritant", "isFragrance", "note"],
+        required: ["name", "function", "helps", "irritation", "comedogenic", "fragrance", "note"],
       },
     },
   },
@@ -307,25 +322,27 @@ const CLASSIFY_SCHEMA = {
 };
 
 const ClassifyResponseSchema = z.object({
-  items: z.array(IngredientClassificationSchema),
+  items: z.array(IngredientAssessmentSchema),
 });
 
 /**
- * Classify ingredients into our fixed fields (Tier 3). The model supplies FACTS
- * about ingredients; scoring.ts still computes every number deterministically.
- * One batched call at temperature 0 for stable output; results are cached upstream.
+ * Grade ingredients (Tier 3). The model supplies bounded JUDGMENTS about each
+ * ingredient; scoring.ts still computes every number deterministically. One
+ * batched call at temperature 0 for stable output; results are cached upstream.
  */
 export async function classifyIngredients(
   names: string[],
-): Promise<IngredientClassification[]> {
+): Promise<IngredientAssessment[]> {
   if (names.length === 0) return [];
   const ai = getClient();
 
   const prompt =
-    "You are a cosmetic-chemistry reference. For each INCI ingredient below, " +
-    "return its classification in the required fields. Be factual and conservative: " +
-    "only list a concern under benefitsFor if the ingredient is genuinely known to " +
-    "help it. Do NOT score or rank the product; classify ingredients only.\n\n" +
+    "You are a rigorous cosmetic-chemistry reference. For each INCI ingredient " +
+    "below, grade it conservatively. Mark a concern 'strong' ONLY when it is a " +
+    "well-evidenced primary benefit of that ingredient; use 'moderate' for a " +
+    "secondary/supportive benefit; OMIT concerns it doesn't meaningfully help. " +
+    "Rate irritation honestly (actives like acids/retinoids are not 'none'). " +
+    "Do NOT score or rank the product; grade ingredients only.\n\n" +
     "Ingredients:\n" +
     names.map((n) => `- ${n}`).join("\n");
 
