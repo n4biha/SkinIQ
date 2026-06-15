@@ -22,7 +22,7 @@ export async function getProfile(userId: string): Promise<SkinProfile | null> {
   if (!isSupabaseConfigured()) return null;
   const { data, error } = await getServerSupabase()
     .from(TABLE)
-    .select("skin_type, concerns, allergies")
+    .select("skin_type, sensitive, concerns, allergies")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -33,6 +33,7 @@ export async function getProfile(userId: string): Promise<SkinProfile | null> {
 
   const parsed = SkinProfileSchema.safeParse({
     skinType: data.skin_type ?? null,
+    sensitive: data.sensitive ?? false,
     concerns: data.concerns ?? [],
     allergies: data.allergies ?? [],
   });
@@ -51,6 +52,7 @@ export async function saveProfile(
       {
         user_id: userId,
         skin_type: profile.skinType,
+        sensitive: profile.sensitive,
         concerns: profile.concerns,
         allergies: profile.allergies,
       },

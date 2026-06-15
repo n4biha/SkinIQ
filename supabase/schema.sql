@@ -9,6 +9,7 @@ create table if not exists profiles (
   id         uuid primary key default gen_random_uuid(),
   user_id    text unique,
   skin_type  text,
+  sensitive  boolean not null default false,
   concerns   text[] not null default '{}',
   allergies  text[] not null default '{}',
   created_at timestamptz not null default now()
@@ -67,7 +68,8 @@ create table if not exists ingredients (
 -- Migrations for already-created tables ("create table if not exists" above
 -- won't alter an existing table). All idempotent — safe to re-run.
 -- ---------------------------------------------------------------------------
-alter table results add column if not exists user_id text;
+alter table results  add column if not exists user_id text;
+alter table profiles add column if not exists sensitive boolean not null default false;
 create index if not exists results_user_id_idx on results(user_id);
 create index if not exists scans_user_id_idx   on scans(user_id);
 create unique index if not exists profiles_user_id_key on profiles(user_id);
