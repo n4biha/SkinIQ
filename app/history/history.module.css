@@ -38,6 +38,103 @@
   margin-bottom: var(--space-2);
 }
 
+/* ---- Toolbar (search · filter · sort · clear all) ---- */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.search,
+.select {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.search {
+  min-width: 200px;
+}
+
+.select {
+  cursor: pointer;
+}
+
+.search:focus,
+.select:focus {
+  border-color: var(--green);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.count {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.confirmRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.clearBtn,
+.cancelBtn {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.clearBtn:hover {
+  border-color: var(--flag);
+  color: var(--flag);
+}
+
+.dangerBtn {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--flag);
+  background: var(--flag);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dangerBtn:disabled,
+.cancelBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ---- Grid of scan cards ---- */
 
 .grid {
@@ -45,6 +142,59 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: var(--space-4);
+}
+
+.cardWrap {
+  position: relative;
+}
+
+/* Delete (trash) button — overlays the card, outside the <a>. */
+.deleteBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.cardWrap:hover .deleteBtn,
+.deleteBtn:focus-visible {
+  opacity: 1;
+}
+
+.deleteBtn:hover {
+  color: var(--flag);
+  border-color: var(--flag);
+}
+
+/* Inline confirm shown in place of the trash button. */
+.cardConfirm {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  gap: var(--space-2);
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(26, 43, 35, 0.12);
+}
+
+.cardConfirm .dangerBtn,
+.cardConfirm .cancelBtn {
+  padding: 5px 10px;
+  font-size: 13px;
 }
 
 .card {

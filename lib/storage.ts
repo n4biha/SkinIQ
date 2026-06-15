@@ -84,6 +84,17 @@ export async function signScanUrls(
   return map;
 }
 
+/** Delete stored scan photos by path (best-effort — failures are logged only). */
+export async function removeScans(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  try {
+    const { error } = await getServerSupabase().storage.from(BUCKET).remove(paths);
+    if (error) console.warn("[storage] removeScans failed:", error.message);
+  } catch (err) {
+    console.warn("[storage] removeScans error:", err instanceof Error ? err.message : err);
+  }
+}
+
 /** Mint a temporary signed URL for a stored scan path (or null on failure). */
 export async function signScanUrl(
   path: string,

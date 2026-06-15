@@ -14,7 +14,7 @@
  */
 
 import { isSupabaseConfigured, getServerSupabase } from "@/lib/supabase";
-import { signScanUrl, signScanUrls } from "@/lib/storage";
+import { signScanUrl, signScanUrls, removeScans } from "@/lib/storage";
 import { ReportSchema, type Report, type Verdict } from "@/lib/types";
 
 // In-memory fallback + same-process cache, kept across hot-reloads.
@@ -99,6 +99,8 @@ export type HistoryItem = {
   id: string;
   productName: string;
   scannedOn: string;
+  /** Raw ISO timestamp (DB only) — used for sorting by date added. */
+  createdAt?: string;
   overallScore: number;
   verdict: Verdict;
   imageUrl?: string;
@@ -129,6 +131,7 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
           id: r.id as string,
           productName: (r.product_name as string) ?? "Scanned product",
           scannedOn: formatDate(String(r.created_at)),
+          createdAt: String(r.created_at),
           overallScore: Number(r.overall_score),
           verdict: r.verdict as Verdict,
           imageUrl: path ? signed.get(path) : undefined,
@@ -172,4 +175,80 @@ export async function getReport(id: string): Promise<Report | undefined> {
     }
   }
   return reports.get(id);
+}
+
+/** Delete one of a user's reports, plus its linked scan row + stored photo.
+ *  Owner-scoped (service-role bypasses RLS). Best-effort; returns success. */
+export async function deleteReport(id: string, ownerId: string): Promise<boolean> {
+  reports.delete(id);
+  if (!isSupabaseConfigured()) return true;
+
+  const sb = getServerSupabase();
+  // Find the linked scan + image path before deleting (owner-scoped).
+  const { data } = await sb
+    .from(TABLE)
+    .select("scan_id, scans(image_url)")
+    .eq("id", id)
+    .eq("user_id", ownerId)
+    .maybeSingle();
+
+  const { error } = await sb
+    .from(TABLE)
+    .delete()
+    .eq("id", id)
+    .eq("user_id", ownerId);
+  if (error) {
+    console.warn("[report-store] delete failed:", error.message);
+    return false;
+  }
+
+  const scanId = (data as { scan_id?: string } | null)?.scan_id;
+  const path = (data?.scans as { image_url?: string } | null)?.image_url;
+  if (scanId) {
+    await sb.from("scans").delete().eq("id", scanId).eq("user_id", ownerId);
+  }
+  if (path) await removeScans([path]);
+  return true;
+}
+
+/** Delete ALL of a user's reports, plus their scans + stored photos.
+ *  Owner-scoped. Returns how many reports were removed. */
+export async function clearReports(ownerId: string): Promise<number> {
+  if (!isSupabaseConfigured()) {
+    const n = reports.size;
+    reports.clear();
+    return n;
+  }
+
+  const sb = getServerSupabase();
+  const { data, error: readError } = await sb
+    .from(TABLE)
+    .select("id, scan_id, scans(image_url)")
+    .eq("user_id", ownerId);
+  if (readError) {
+    console.warn("[report-store] clear lookup failed:", readError.message);
+    return 0;
+  }
+
+  const rows = data ?? [];
+  const paths = rows
+    .map((r) => (r.scans as { image_url?: string } | null)?.image_url)
+    .filter((p): p is string => Boolean(p));
+  const scanIds = rows
+    .map((r) => r.scan_id as string | null)
+    .filter((s): s is string => Boolean(s));
+
+  const { error } = await sb.from(TABLE).delete().eq("user_id", ownerId);
+  if (error) {
+    console.warn("[report-store] clear failed:", error.message);
+    return 0;
+  }
+  if (scanIds.length) {
+    await sb.from("scans").delete().in("id", scanIds).eq("user_id", ownerId);
+  }
+  if (paths.length) await removeScans(paths);
+
+  // Drop this user's same-process in-memory copies (leave other users' alone).
+  for (const r of rows) reports.delete(r.id as string);
+  return rows.length;
 }
