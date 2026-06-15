@@ -28,7 +28,7 @@ export async function createServerSupabase(): Promise<SupabaseClient> {
             }
           } catch {
             // Called from a Server Component (can't set cookies there) — the
-            // middleware handles session refresh, so this is safe to ignore.
+            // proxy handles session refresh, so this is safe to ignore.
           }
         },
       },

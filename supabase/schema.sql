@@ -1,24 +1,13 @@
--- SkinIQ database schema (Phase C).
--- Paste this whole file into the Supabase SQL Editor and press "Run".
--- It is safe to re-run: every statement uses "if not exists".
---
--- Security model: Row Level Security (RLS) is ENABLED on every table but we add
--- NO public policies. That means the public "anon" key can't read or write
--- anything — the database is locked down by default. Our Next.js server talks to
--- Supabase with the secret "service_role" key, which bypasses RLS. So all access
--- goes through our server, which is exactly what we want for now. (User-scoped
--- policies + login come later, in part C5.)
-
 -- gen_random_uuid() comes from this extension (usually already enabled).
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------------
--- profiles — a saved skin profile. user_id is a plain text id for now
--- (anonymous / per-device). Real auth arrives in C5.
+-- profiles — a saved skin profile, one per signed-in user (user_id = the
+-- Supabase auth user id). Unique on user_id so we can upsert it.
 -- ---------------------------------------------------------------------------
 create table if not exists profiles (
   id         uuid primary key default gen_random_uuid(),
-  user_id    text,
+  user_id    text unique,
   skin_type  text,
   concerns   text[] not null default '{}',
   allergies  text[] not null default '{}',
@@ -42,6 +31,7 @@ create table if not exists scans (
 -- ---------------------------------------------------------------------------
 create table if not exists results (
   id             uuid primary key default gen_random_uuid(),
+  user_id        text,
   scan_id        uuid references scans(id) on delete cascade,
   product_name   text,
   overall_score  numeric,
@@ -72,6 +62,15 @@ create table if not exists ingredients (
   source       text,                 -- 'curated' | 'cosing' | 'gemini'
   created_at   timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Migrations for already-created tables ("create table if not exists" above
+-- won't alter an existing table). All idempotent — safe to re-run.
+-- ---------------------------------------------------------------------------
+alter table results add column if not exists user_id text;
+create index if not exists results_user_id_idx on results(user_id);
+create index if not exists scans_user_id_idx   on scans(user_id);
+create unique index if not exists profiles_user_id_key on profiles(user_id);
 
 -- Lock everything down by default (server service-role key bypasses this).
 alter table profiles    enable row level security;

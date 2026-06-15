@@ -27,7 +27,6 @@ import {
   type LabelReading,
   type Report,
   type ReportCopy,
-  type SkinProfile,
 } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -53,7 +52,6 @@ function today(): string {
 function buildFallbackCopy(
   label: LabelReading,
   scored: ScoringResult,
-  _profile: SkinProfile,
 ): ReportCopy {
   const good = scored.ingredients.filter((i) => i.flag === "good");
   const flagged = scored.ingredients.filter(
@@ -153,7 +151,7 @@ export async function POST(req: Request) {
       "[analyze] writeReportCopy failed, using fallback copy:",
       err instanceof Error ? err.message : err,
     );
-    copy = buildFallbackCopy(label, scored, profile);
+    copy = buildFallbackCopy(label, scored);
   }
 
   // 5) Assemble + validate the final report.

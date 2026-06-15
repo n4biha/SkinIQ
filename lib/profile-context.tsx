@@ -4,12 +4,20 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { SkinProfileSchema, type SkinProfile, type SkinType } from "@/lib/types";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 const STORAGE_KEY = "skiniq:profile";
+
+/** Whether a Supabase project is wired up (public env present). When false the
+ *  profile lives only in localStorage and we never touch the network. */
+const SUPABASE_ENABLED =
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 const EMPTY_PROFILE: SkinProfile = {
   skinType: null,
@@ -17,9 +25,54 @@ const EMPTY_PROFILE: SkinProfile = {
   allergies: [],
 };
 
+function isEmptyProfile(p: SkinProfile): boolean {
+  return !p.skinType && p.concerns.length === 0 && p.allergies.length === 0;
+}
+
+/** Read + validate the profile saved in localStorage (null if absent/invalid). */
+function readLocal(): SkinProfile | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = SkinProfileSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** GET the signed-in user's saved profile, or null (guest / unconfigured / error). */
+async function fetchRemote(): Promise<SkinProfile | null> {
+  if (!SUPABASE_ENABLED) return null;
+  try {
+    const res = await fetch("/api/profile");
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json?.profile) return null;
+    const parsed = SkinProfileSchema.safeParse(json.profile);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** PUT the profile to the account (no-ops for guests / when unconfigured). */
+async function pushRemote(profile: SkinProfile): Promise<void> {
+  if (!SUPABASE_ENABLED) return;
+  try {
+    await fetch("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    });
+  } catch {
+    // best-effort — localStorage still holds the profile
+  }
+}
+
 type ProfileContextValue = {
   profile: SkinProfile;
-  /** False until we've read localStorage on the client; lets pages avoid a flash. */
+  /** False until the initial load (localStorage + account) completes; lets pages avoid a flash. */
   hydrated: boolean;
   setSkinType: (type: SkinType) => void;
   toggleConcern: (concern: string) => void;
@@ -32,21 +85,46 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfileState] = useState<SkinProfile>(EMPTY_PROFILE);
   const [hydrated, setHydrated] = useState(false);
 
-  // Load any saved profile once, on the client.
+  // Mirrors the latest profile for use inside non-reactive callbacks (auth events).
+  const profileRef = useRef(profile);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = SkinProfileSchema.safeParse(JSON.parse(raw));
-        if (parsed.success) setProfileState(parsed.data);
+    profileRef.current = profile;
+  }, [profile]);
+
+  // When we load a profile (from storage/DB or an auth event) we don't want that
+  // assignment to immediately bounce back to the server. This skips one save.
+  const skipNextSave = useRef(true);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Initial load: localStorage first (instant), then the account's saved profile
+  // if signed in. State is set in the async callback, so the effect body has no
+  // synchronous setState.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const local = readLocal();
+      const remote = await fetchRemote();
+      if (cancelled) return;
+
+      if (remote) {
+        skipNextSave.current = true;
+        setProfileState(remote);
+      } else if (local) {
+        skipNextSave.current = true;
+        setProfileState(local);
+        // Signed-in user with a local-only profile and nothing saved yet:
+        // push it up so a guest-built profile isn't lost on first sign-in.
+        if (!isEmptyProfile(local)) void pushRemote(local);
       }
-    } catch {
-      // ignore malformed storage
-    }
-    setHydrated(true);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Persist on every change (after the initial load).
+  // Persist on change (after the initial load): localStorage immediately, the
+  // account (when signed in) debounced so rapid edits don't spam the API.
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -54,7 +132,39 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore storage write failures (e.g. private mode)
     }
+
+    if (!SUPABASE_ENABLED) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    const snapshot = profile;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void pushRemote(snapshot), 600);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, [profile, hydrated]);
+
+  // Re-sync with the account when the user signs in (e.g. after the magic link).
+  useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    const supabase = createBrowserSupabase();
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "SIGNED_IN") return;
+      void (async () => {
+        const remote = await fetchRemote();
+        if (remote) {
+          skipNextSave.current = true;
+          setProfileState(remote);
+        } else if (!isEmptyProfile(profileRef.current)) {
+          // No saved profile yet — adopt the one already on this device.
+          void pushRemote(profileRef.current);
+        }
+      })();
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const value: ProfileContextValue = {
     profile,
