@@ -10,7 +10,6 @@ const SKIN_TYPE_LABELS: Record<SkinType, string> = {
   oily: "Oily",
   dry: "Dry",
   combination: "Combination",
-  sensitive: "Sensitive",
   "not-sure": "Not sure",
 };
 
@@ -28,6 +27,7 @@ export default function ProfilePage() {
 
   const hasProfile =
     profile.skinType !== null ||
+    profile.sensitive ||
     profile.concerns.length > 0 ||
     profile.allergies.length > 0;
 
@@ -70,6 +70,11 @@ export default function ProfilePage() {
         ) : (
           <p className={styles.muted}>Not set</p>
         )}
+      </section>
+
+      <section className={`card ${styles.card}`}>
+        <h2 className={styles.label}>Sensitive skin</h2>
+        <span className={styles.chip}>{profile.sensitive ? "Yes" : "No"}</span>
       </section>
 
       <section className={`card ${styles.card}`}>

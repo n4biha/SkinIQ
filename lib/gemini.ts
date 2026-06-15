@@ -217,6 +217,7 @@ export async function writeReportCopy(
   const context = {
     productName: label.productName,
     skinType: profile.skinType,
+    sensitive: profile.sensitive,
     concerns: profile.concerns,
     allergies: profile.allergies,
     overallScore: scored.overallScore,

@@ -21,12 +21,18 @@ const SUPABASE_ENABLED =
 
 const EMPTY_PROFILE: SkinProfile = {
   skinType: null,
+  sensitive: false,
   concerns: [],
   allergies: [],
 };
 
 function isEmptyProfile(p: SkinProfile): boolean {
-  return !p.skinType && p.concerns.length === 0 && p.allergies.length === 0;
+  return (
+    !p.skinType &&
+    !p.sensitive &&
+    p.concerns.length === 0 &&
+    p.allergies.length === 0
+  );
 }
 
 /** Read + validate the profile saved in localStorage (null if absent/invalid). */
@@ -75,6 +81,7 @@ type ProfileContextValue = {
   /** False until the initial load (localStorage + account) completes; lets pages avoid a flash. */
   hydrated: boolean;
   setSkinType: (type: SkinType) => void;
+  setSensitive: (value: boolean) => void;
   toggleConcern: (concern: string) => void;
   addAllergy: (term: string) => void;
   removeAllergy: (term: string) => void;
@@ -172,6 +179,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     profile,
     hydrated,
     setSkinType: (type) => setProfileState((p) => ({ ...p, skinType: type })),
+    setSensitive: (value) => setProfileState((p) => ({ ...p, sensitive: value })),
     toggleConcern: (concern) =>
       setProfileState((p) => ({
         ...p,

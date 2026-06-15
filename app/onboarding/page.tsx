@@ -18,7 +18,6 @@ const SKIN_TYPES: SkinTypeTile[] = [
   { id: "oily", label: "Oily", icon: <DropIcon /> },
   { id: "dry", label: "Dry", icon: <SunIcon /> },
   { id: "combination", label: "Combination", icon: <SplitIcon /> },
-  { id: "sensitive", label: "Sensitive", icon: <SparkIcon /> },
   { id: "not-sure", label: "Not sure", icon: <QuestionIcon /> },
 ];
 
@@ -27,13 +26,12 @@ const CONCERNS = [
   "Redness",
   "Dark spots",
   "Dryness",
-  "Sensitivity",
   "Fine lines",
 ];
 
 export default function OnboardingPage() {
   // Selections persist immediately via the profile context (localStorage + DB).
-  const { profile, setSkinType, toggleConcern, addAllergy, removeAllergy } =
+  const { profile, setSkinType, setSensitive, toggleConcern, addAllergy, removeAllergy } =
     useProfile();
   const skinType = profile.skinType;
   const concerns = profile.concerns;
@@ -90,6 +88,27 @@ export default function OnboardingPage() {
                   <span className={styles.tileLabel}>{t.label}</span>
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section className={styles.section}>
+            <h2 className={styles.question}>Is your skin sensitive?</h2>
+            <p className={styles.subtext}>
+              Choose this in addition to your skin type if your skin is easily
+              irritated or reactive.
+            </p>
+            <div className={styles.chips}>
+              <button
+                type="button"
+                className={`${styles.chip} ${
+                  profile.sensitive ? styles.chipSelected : ""
+                }`}
+                aria-pressed={profile.sensitive}
+                onClick={() => setSensitive(!profile.sensitive)}
+              >
+                {profile.sensitive && <CheckIcon />}
+                Sensitive skin
+              </button>
             </div>
           </section>
         </div>
@@ -266,25 +285,6 @@ function SplitIcon() {
       <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
       <path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor" opacity="0.18" />
       <path d="M12 4v16" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
-      <path
-        d="M12 3c.6 3.6 1.8 4.8 5.4 5.4-3.6.6-4.8 1.8-5.4 5.4-.6-3.6-1.8-4.8-5.4-5.4C10.2 7.8 11.4 6.6 12 3Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M18 14c.3 1.8.9 2.4 2.7 2.7-1.8.3-2.4.9-2.7 2.7-.3-1.8-.9-2.4-2.7-2.7 1.8-.3 2.4-.9 2.7-2.7Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }

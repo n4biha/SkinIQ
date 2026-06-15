@@ -13,15 +13,35 @@ export const SkinTypeSchema = z.enum([
   "oily",
   "dry",
   "combination",
-  "sensitive",
   "not-sure",
 ]);
 
-export const SkinProfileSchema = z.object({
+/**
+ * Raw profile shape. `sensitive` is a TRAIT that coexists with any skin type
+ * (you can be "dry and sensitive"), so it's a separate boolean, not a skin type.
+ */
+const SkinProfileObject = z.object({
   skinType: SkinTypeSchema.nullable(),
+  sensitive: z.boolean().default(false),
   concerns: z.array(z.string()),
   allergies: z.array(z.string()).default([]),
 });
+
+/**
+ * Skin profile. The `preprocess` migrates legacy data from when "sensitive" was
+ * a skin TYPE: an old saved `skinType: "sensitive"` becomes
+ * `{ skinType: null, sensitive: true }` instead of failing to parse.
+ */
+export const SkinProfileSchema = z.preprocess((val) => {
+  if (
+    val &&
+    typeof val === "object" &&
+    (val as { skinType?: unknown }).skinType === "sensitive"
+  ) {
+    return { ...(val as object), skinType: null, sensitive: true };
+  }
+  return val;
+}, SkinProfileObject);
 
 /* ---- Canonical skin concerns (shared by scoring + ingredient classification) ---- */
 

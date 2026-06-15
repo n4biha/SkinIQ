@@ -92,12 +92,12 @@ function displayConcerns(profile: SkinProfile): Concern[] {
     case "dry":
       set.add("dryness");
       break;
-    case "sensitive":
-      set.add("sensitivity");
-      break;
     default:
       break;
   }
+  // Sensitivity is a trait, not a skin type — surface its bar when the user
+  // flagged sensitive skin.
+  if (profile.sensitive) set.add("sensitivity");
   if (set.size === 0) return ["acne", "oiliness", "redness", "pores", "sensitivity"];
   return CONCERN_ORDER.filter((c) => set.has(c));
 }
@@ -185,7 +185,7 @@ export function scoreProduct(
   const selectedSet = new Set(scoredConcerns);
 
   const sensitiveSkin =
-    profile.skinType === "sensitive" ||
+    profile.sensitive ||
     selectedSet.has("sensitivity") ||
     selectedSet.has("redness");
   const acneProne =
