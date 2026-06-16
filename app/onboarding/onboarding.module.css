@@ -62,6 +62,14 @@
   gap: var(--space-3);
 }
 
+/* Independent trait toggles (sensitive / acne-prone) — same tile look, 2 across. */
+.traitGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
 .tile {
   display: flex;
   flex-direction: column;

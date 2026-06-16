@@ -23,6 +23,9 @@ export const SkinTypeSchema = z.enum([
 const SkinProfileObject = z.object({
   skinType: SkinTypeSchema.nullable(),
   sensitive: z.boolean().default(false),
+  // Explicit user-set trait (parallel to `sensitive`). Replaces the old scoring
+  // inference; scoring keeps a fallback for profiles saved before this existed.
+  acneProne: z.boolean().default(false),
   concerns: z.array(z.string()),
   allergies: z.array(z.string()).default([]),
 });
@@ -78,6 +81,55 @@ export const IngredientAssessmentSchema = z.object({
   comedogenic: z.number().int().min(0).max(5),
   fragrance: z.boolean(),
   note: z.string(),
+});
+
+/* ---- Knowledge-base grade (three-state, AI-graded + cached) ---- */
+
+/**
+ * Per (ingredient, concern) grade. THREE-STATE, and the distinction is the whole
+ * point: `neutral` = doesn't address the concern but does NOT harm it (the default
+ * for most pairings; NEVER penalized — silence ≠ bad). `aggravates` = actively
+ * works against the concern (penalized). Only `helps-*` is rewarded.
+ */
+export const ConcernGradeSchema = z.enum([
+  "helps-strong",
+  "helps-moderate",
+  "helps-slight",
+  "neutral",
+  "aggravates",
+]);
+
+/** How sure the grader is about an ingredient's grade. */
+export const ConfidenceLevelSchema = z.enum(["high", "medium", "low"]);
+
+/**
+ * One ingredient's full grade as stored in the knowledge base: concern-independent
+ * attributes + a map of concern-key → three-state grade + provenance metadata.
+ * `concerns` is keyed by `normalizeConcernKey(...)`. Bounded enums only — the model
+ * picks from fixed buckets, never a free number or text.
+ */
+export const IngredientGradeSchema = z.object({
+  irritation: IrritationRiskSchema,
+  comedogenic: z.number().int().min(0).max(5),
+  fragrance: z.boolean(),
+  confidence: ConfidenceLevelSchema,
+  concerns: z.record(z.string(), ConcernGradeSchema),
+  // Provenance: which grading version/model produced this, and when (metadata only;
+  // re-grading is version-gated, never time-based).
+  gradeVersion: z.number().int(),
+  model: z.string(),
+  gradedAt: z.string(),
+});
+
+/** What the AI grader returns per ingredient (concerns as an array for structured
+ *  output); knowledge.ts converts it into an IngredientGrade. */
+export const IngredientGradeAISchema = z.object({
+  name: z.string(),
+  irritation: IrritationRiskSchema,
+  comedogenic: z.number().int().min(0).max(5),
+  fragrance: z.boolean(),
+  confidence: ConfidenceLevelSchema,
+  concerns: z.array(z.object({ concern: ConcernSchema, grade: ConcernGradeSchema })),
 });
 
 /* ---- Report building blocks ---- */
@@ -183,6 +235,10 @@ export type ConcernScore = z.infer<typeof ConcernScoreSchema>;
 export type LabelReading = z.infer<typeof LabelReadingSchema>;
 export type FrontReading = z.infer<typeof FrontReadingSchema>;
 export type ProductCategory = z.infer<typeof ProductCategorySchema>;
+export type ConcernGrade = z.infer<typeof ConcernGradeSchema>;
+export type ConfidenceLevel = z.infer<typeof ConfidenceLevelSchema>;
+export type IngredientGrade = z.infer<typeof IngredientGradeSchema>;
+export type IngredientGradeAI = z.infer<typeof IngredientGradeAISchema>;
 export type Report = z.infer<typeof ReportSchema>;
 export type ReportCopy = z.infer<typeof ReportCopySchema>;
 export type Concern = z.infer<typeof ConcernSchema>;

@@ -10,6 +10,7 @@ create table if not exists profiles (
   user_id    text unique,
   skin_type  text,
   sensitive  boolean not null default false,
+  acne_prone boolean not null default false,
   concerns   text[] not null default '{}',
   allergies  text[] not null default '{}',
   created_at timestamptz not null default now()
@@ -72,7 +73,8 @@ create table if not exists ingredients (
 -- won't alter an existing table). All idempotent — safe to re-run.
 -- ---------------------------------------------------------------------------
 alter table results  add column if not exists user_id text;
-alter table profiles add column if not exists sensitive boolean not null default false;
+alter table profiles add column if not exists sensitive  boolean not null default false;
+alter table profiles add column if not exists acne_prone boolean not null default false;
 -- ingredients: migrate the pre-grading shape to the graded one (table is a cache).
 alter table ingredients add column if not exists helps      jsonb   not null default '{}'::jsonb;
 alter table ingredients add column if not exists irritation text    not null default 'none';
@@ -87,6 +89,11 @@ create unique index if not exists profiles_user_id_key on profiles(user_id);
 alter table results add column if not exists share_token text;
 create unique index if not exists results_share_token_key on results(share_token);
 alter table results add column if not exists category text;
+-- ingredients: knowledge-base grade shape (three-state grades + provenance).
+alter table ingredients add column if not exists grade        jsonb;
+alter table ingredients add column if not exists grade_version int;
+alter table ingredients add column if not exists model        text;
+alter table ingredients add column if not exists graded_at    timestamptz;
 
 -- Lock everything down by default (server service-role key bypasses this).
 alter table profiles    enable row level security;

@@ -31,7 +31,7 @@ const CONCERNS = [
 
 export default function OnboardingPage() {
   // Selections persist immediately via the profile context (localStorage + DB).
-  const { profile, setSkinType, setSensitive, toggleConcern, addAllergy, removeAllergy } =
+  const { profile, setSkinType, setSensitive, setAcneProne, toggleConcern, addAllergy, removeAllergy } =
     useProfile();
   const skinType = profile.skinType;
   const concerns = profile.concerns;
@@ -92,24 +92,42 @@ export default function OnboardingPage() {
           </section>
 
           <section className={styles.section}>
-            <h2 className={styles.question}>Is your skin sensitive?</h2>
+            <h2 className={styles.question}>A few things about your skin</h2>
             <p className={styles.subtext}>
-              Choose this in addition to your skin type if your skin is easily
-              irritated or reactive.
+              Pick any that apply — independent of your skin type, and of each other.
             </p>
-            <div className={styles.chips}>
+            {/* Independent toggle tiles, styled like the skin-type buttons. */}
+            <div className={styles.traitGrid}>
               <button
                 type="button"
-                className={`${styles.chip} ${
-                  profile.sensitive ? styles.chipSelected : ""
+                className={`${styles.tile} ${
+                  profile.sensitive ? styles.tileSelected : ""
                 }`}
                 aria-pressed={profile.sensitive}
                 onClick={() => setSensitive(!profile.sensitive)}
               >
-                {profile.sensitive && <CheckIcon />}
-                Sensitive skin
+                <span className={styles.tileIcon}>
+                  <ShieldIcon />
+                </span>
+                <span className={styles.tileLabel}>Sensitive skin</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.tile} ${
+                  profile.acneProne ? styles.tileSelected : ""
+                }`}
+                aria-pressed={profile.acneProne}
+                onClick={() => setAcneProne(!profile.acneProne)}
+              >
+                <span className={styles.tileIcon}>
+                  <BlemishIcon />
+                </span>
+                <span className={styles.tileLabel}>Acne-prone</span>
               </button>
             </div>
+            <p className={styles.hint}>
+              Acne-prone: skin that breaks out or clogs easily.
+            </p>
           </section>
         </div>
 
@@ -300,6 +318,32 @@ function QuestionIcon() {
         strokeLinecap="round"
       />
       <circle cx="11.5" cy="17" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+// Soothing/protective icon for the sensitive-skin tile.
+function ShieldIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <path
+        d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path d="M9.5 12l1.8 1.8 3.2-3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Blemish-prone icon (a target/circle-dot) for the acne-prone tile.
+function BlemishIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" />
     </svg>
   );
 }

@@ -17,11 +17,11 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
 import {
   ConcernSchema,
-  IngredientAssessmentSchema,
+  IngredientGradeAISchema,
   LabelReadingSchema,
   FrontReadingSchema,
   ReportCopySchema,
-  type IngredientAssessment,
+  type IngredientGradeAI,
   type LabelReading,
   type FrontReading,
   type ReportCopy,
@@ -386,36 +386,31 @@ export async function writeReportCopy(
 }
 
 /* ------------------------------------------------------------------ */
-/* Ingredient classification (Tier 3 fallback)                         */
+/* Ingredient grading (the knowledge base's primary grader)            */
 /* ------------------------------------------------------------------ */
 
-const CLASSIFY_SCHEMA = {
+/** Model id stamped onto stored grades for provenance. */
+export const GRADE_MODEL = MODEL;
+
+const CONCERN_ENUM = [...ConcernSchema.options];
+const GRADE_ENUM = [
+  "helps-strong",
+  "helps-moderate",
+  "helps-slight",
+  "neutral",
+  "aggravates",
+];
+
+const GRADE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     items: {
       type: Type.ARRAY,
-      description: "One graded assessment per input ingredient, in the same order.",
+      description: "One grade per input ingredient, in the same order.",
       items: {
         type: Type.OBJECT,
         properties: {
           name: { type: Type.STRING, description: "The ingredient name, echoed back." },
-          function: {
-            type: Type.STRING,
-            description: "Short cosmetic function, e.g. 'Humectant' or 'Emollient'.",
-          },
-          helps: {
-            type: Type.ARRAY,
-            description:
-              "Concerns this ingredient helps, each graded. Omit concerns it doesn't help.",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                concern: { type: Type.STRING, format: "enum", enum: [...ConcernSchema.options] },
-                strength: { type: Type.STRING, format: "enum", enum: ["strong", "moderate"] },
-              },
-              required: ["concern", "strength"],
-            },
-          },
           irritation: {
             type: Type.STRING,
             format: "enum",
@@ -428,41 +423,71 @@ const CLASSIFY_SCHEMA = {
           },
           fragrance: {
             type: Type.BOOLEAN,
-            description: "True for fragrance, parfum, essential oils and fragrance allergens.",
+            description: "True for fragrance/parfum/essential oils/known fragrance allergens.",
           },
-          note: { type: Type.STRING, description: "One short, factual sentence." },
+          confidence: {
+            type: Type.STRING,
+            format: "enum",
+            enum: ["high", "medium", "low"],
+            description: "How sure you are about this ingredient's grade.",
+          },
+          concerns: {
+            type: Type.ARRAY,
+            description: "A grade for EACH listed concern (one entry per concern).",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                concern: { type: Type.STRING, format: "enum", enum: CONCERN_ENUM },
+                grade: { type: Type.STRING, format: "enum", enum: GRADE_ENUM },
+              },
+              required: ["concern", "grade"],
+            },
+          },
         },
-        required: ["name", "function", "helps", "irritation", "comedogenic", "fragrance", "note"],
+        required: ["name", "irritation", "comedogenic", "fragrance", "confidence", "concerns"],
       },
     },
   },
   required: ["items"],
 };
 
-const ClassifyResponseSchema = z.object({
-  items: z.array(IngredientAssessmentSchema),
-});
+const GradeResponseSchema = z.object({ items: z.array(IngredientGradeAISchema) });
 
 /**
- * Grade ingredients (Tier 3). The model supplies bounded JUDGMENTS about each
- * ingredient; scoring.ts still computes every number deterministically. One
- * batched call at temperature 0 for stable output; results are cached upstream.
+ * Grade ingredients against the canonical concerns (THREE-STATE per concern), with
+ * irritation/comedogenic/fragrance/confidence. CosIng functions (when known) are
+ * passed in as factual grounding. Temp 0 + batched → stable output; the knowledge
+ * base caches each grade so the model is asked once per ingredient.
  */
-export async function classifyIngredients(
-  names: string[],
-): Promise<IngredientAssessment[]> {
-  if (names.length === 0) return [];
+export async function gradeIngredients(
+  items: { name: string; cosingFunctions: string[] }[],
+): Promise<IngredientGradeAI[]> {
+  if (items.length === 0) return [];
   const ai = getClient();
 
   const prompt =
-    "You are a rigorous cosmetic-chemistry reference. For each INCI ingredient " +
-    "below, grade it conservatively. Mark a concern 'strong' ONLY when it is a " +
-    "well-evidenced primary benefit of that ingredient; use 'moderate' for a " +
-    "secondary/supportive benefit; OMIT concerns it doesn't meaningfully help. " +
-    "Rate irritation honestly (actives like acids/retinoids are not 'none'). " +
-    "Do NOT score or rank the product; grade ingredients only.\n\n" +
+    "You are a rigorous, objective cosmetic chemist. Grade each ingredient below " +
+    `against these skin concerns: ${ConcernSchema.options.join(", ")}.\n` +
+    "For EACH concern return exactly one of: helps-strong, helps-moderate, " +
+    "helps-slight, neutral, aggravates.\n" +
+    "- 'neutral' is the DEFAULT — the ingredient simply doesn't affect that concern. " +
+    "Most cells are neutral, and neutral is NOT bad.\n" +
+    "- Use 'aggravates' ONLY when there is a real mechanism (comedogenic → acne; " +
+    "irritant/sensitizer → sensitivity and redness; stripping/drying → dryness). " +
+    "When unsure, use neutral — never invent an aggravation.\n" +
+    "- Use 'helps-*' only when the ingredient genuinely benefits that concern " +
+    "(strong = well-evidenced primary benefit; slight = minor/supportive).\n" +
+    "Also grade irritation (none/low/medium/high), comedogenic (0–5), fragrance " +
+    "(boolean), and your confidence (high/medium/low). Where CosIng functions are " +
+    "given, use them as factual reference about the ingredient.\n\n" +
     "Ingredients:\n" +
-    names.map((n) => `- ${n}`).join("\n");
+    items
+      .map((it) =>
+        it.cosingFunctions.length
+          ? `- ${it.name} (CosIng functions: ${it.cosingFunctions.join(", ")})`
+          : `- ${it.name}`,
+      )
+      .join("\n");
 
   const text = await withRetry(async () => {
     const response = await ai.models.generateContent({
@@ -471,20 +496,21 @@ export async function classifyIngredients(
       config: {
         temperature: 0,
         responseMimeType: "application/json",
-        responseSchema: CLASSIFY_SCHEMA,
+        responseSchema: GRADE_SCHEMA,
         thinkingConfig: THINKING_OFF,
+        maxOutputTokens: 8192,
       },
     });
-    if (!response.text) throw new TransientError("classifyIngredients: empty response");
+    if (!response.text) throw new TransientError("gradeIngredients: empty response");
     return response.text;
-  }, "classifyIngredients");
+  }, "gradeIngredients");
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("Gemini returned malformed JSON for classification.");
+    throw new Error("Gemini returned malformed JSON for grading.");
   }
 
-  return ClassifyResponseSchema.parse(parsed).items;
+  return GradeResponseSchema.parse(parsed).items;
 }

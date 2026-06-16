@@ -28,6 +28,7 @@ export default function ProfilePage() {
   const hasProfile =
     profile.skinType !== null ||
     profile.sensitive ||
+    profile.acneProne ||
     profile.concerns.length > 0 ||
     profile.allergies.length > 0;
 
@@ -75,6 +76,11 @@ export default function ProfilePage() {
       <section className={`card ${styles.card}`}>
         <h2 className={styles.label}>Sensitive skin</h2>
         <span className={styles.chip}>{profile.sensitive ? "Yes" : "No"}</span>
+      </section>
+
+      <section className={`card ${styles.card}`}>
+        <h2 className={styles.label}>Acne-prone</h2>
+        <span className={styles.chip}>{profile.acneProne ? "Yes" : "No"}</span>
       </section>
 
       <section className={`card ${styles.card}`}>

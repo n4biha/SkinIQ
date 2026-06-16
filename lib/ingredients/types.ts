@@ -6,7 +6,7 @@
  * combines these deterministically.
  */
 
-import type { Concern, HelpStrength, IrritationRisk } from "@/lib/types";
+import type { Concern, HelpStrength, IrritationRisk, IngredientGrade } from "@/lib/types";
 
 /** A resolved, graded ingredient — what scoring.ts consumes. */
 export type IngredientInfo = {
@@ -35,4 +35,6 @@ export type ResolvedIngredient = {
   normalized: string;
   info: IngredientInfo | null;
   tier: Tier;
+  /** Full three-state knowledge-base grade (for the future scoring rebuild). */
+  grade?: IngredientGrade;
 };

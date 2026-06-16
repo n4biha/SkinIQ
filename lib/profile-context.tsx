@@ -22,6 +22,7 @@ const SUPABASE_ENABLED =
 export const EMPTY_PROFILE: SkinProfile = {
   skinType: null,
   sensitive: false,
+  acneProne: false,
   concerns: [],
   allergies: [],
 };
@@ -30,6 +31,7 @@ function isEmptyProfile(p: SkinProfile): boolean {
   return (
     !p.skinType &&
     !p.sensitive &&
+    !p.acneProne &&
     p.concerns.length === 0 &&
     p.allergies.length === 0
   );
@@ -82,6 +84,7 @@ type ProfileContextValue = {
   hydrated: boolean;
   setSkinType: (type: SkinType) => void;
   setSensitive: (value: boolean) => void;
+  setAcneProne: (value: boolean) => void;
   toggleConcern: (concern: string) => void;
   addAllergy: (term: string) => void;
   removeAllergy: (term: string) => void;
@@ -180,6 +183,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     hydrated,
     setSkinType: (type) => setProfileState((p) => ({ ...p, skinType: type })),
     setSensitive: (value) => setProfileState((p) => ({ ...p, sensitive: value })),
+    setAcneProne: (value) => setProfileState((p) => ({ ...p, acneProne: value })),
     toggleConcern: (concern) =>
       setProfileState((p) => ({
         ...p,

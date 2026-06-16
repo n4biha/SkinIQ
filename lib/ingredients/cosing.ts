@@ -32,6 +32,19 @@ function table(): Map<string, Entry> {
   return map;
 }
 
+/**
+ * Raw CosIng function list for a normalized ingredient (e.g. ["HUMECTANT",
+ * "SKIN CONDITIONING"]), or [] if unknown. This is the EVIDENCE we feed into the AI
+ * grader to ground its judgment — CosIng is an INPUT to grading, not a tier.
+ */
+export function cosingFunctions(normalized: string): string[] {
+  if (!normalized) return [];
+  const entry = table().get(normalized);
+  if (!entry) return [];
+  const [, ...functions] = entry; // first element is the display name
+  return functions;
+}
+
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }

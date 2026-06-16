@@ -188,7 +188,12 @@ export function scoreProduct(
     profile.sensitive ||
     selectedSet.has("sensitivity") ||
     selectedSet.has("redness");
+  // Explicit user-set flag is the primary signal. The rest is a MIGRATION
+  // FALLBACK: profiles saved before `acneProne` existed have it false/unset, so
+  // we keep the old inference (oily/combination skin, or the Acne concern) for
+  // them — this keeps existing users' scores stable.
   const acneProne =
+    profile.acneProne ||
     selectedSet.has("acne") ||
     profile.skinType === "oily" ||
     profile.skinType === "combination";

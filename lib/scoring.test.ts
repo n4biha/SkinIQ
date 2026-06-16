@@ -6,7 +6,7 @@ import type { IngredientInfo, ResolvedIngredient } from "@/lib/ingredients/types
 
 /** Build a SkinProfile with sensible empty defaults. */
 function profile(p: Partial<SkinProfile> = {}): SkinProfile {
-  return { skinType: null, sensitive: false, concerns: [], allergies: [], ...p };
+  return { skinType: null, sensitive: false, acneProne: false, concerns: [], allergies: [], ...p };
 }
 
 /** Build a resolved ingredient; pass `null` info for an unrecognized one. */
@@ -85,5 +85,18 @@ describe("scoreProduct", () => {
     const labels = out.concernScores.map((c) => c.label);
     expect(labels).toContain("Sensitivity");
     expect(labels).toContain("Acne");
+  });
+
+  it("explicit acne-prone on a DRY profile triggers the comedogenic penalty (old inference missed it)", () => {
+    // Dry skin, no Acne concern → the OLD inference would NOT treat this as
+    // acne-prone, so a comedogenic ingredient wouldn't be penalized.
+    const base = profile({ skinType: "dry", concerns: ["Dryness"] });
+    const r = [res("Shea Butter", { helps: { dryness: "moderate" }, comedogenic: 3 })];
+
+    const withoutFlag = scoreProduct(base, r);
+    const withFlag = scoreProduct({ ...base, acneProne: true }, r);
+
+    // The explicit flag now applies the comedogenic penalty → lower score.
+    expect(withFlag.overallScore).toBeLessThan(withoutFlag.overallScore);
   });
 });
