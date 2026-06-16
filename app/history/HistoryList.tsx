@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { HistoryItem } from "@/lib/report-store";
+import { CATEGORY_LABELS } from "@/lib/category";
 import styles from "./history.module.css";
 
 type SortKey = "date" | "score-desc" | "score-asc";
@@ -173,6 +174,7 @@ export default function HistoryList({ items }: { items: HistoryItem[] }) {
                     {item.verdict}
                   </span>
                   <h2 className={styles.name}>{item.productName}</h2>
+                  <p className={styles.cardCategory}>{CATEGORY_LABELS[item.category]}</p>
                   <p className={styles.meta}>Added {item.scannedOn}</p>
                   <p className={styles.score}>
                     {item.overallScore.toFixed(1)} <span className={styles.scoreMax}>/ 10</span>

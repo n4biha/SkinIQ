@@ -160,6 +160,60 @@
   margin-top: var(--space-3);
 }
 
+/* ---- Category picker ---- */
+
+.catField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.catLabel {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.catHint {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.catSub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
+.catChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.catChip {
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.catChip:hover {
+  border-color: var(--green);
+}
+
+.catChipActive {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
 /* ---- Method toggle (Upload / Take photo) ---- */
 
 .methodToggle {

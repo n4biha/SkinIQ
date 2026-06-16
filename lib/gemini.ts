@@ -217,8 +217,14 @@ const FRONT_RESPONSE_SCHEMA = {
       nullable: true,
       description: "When isProductFront is false, a short user-facing reason. Null otherwise.",
     },
+    category: {
+      type: Type.STRING,
+      format: "enum",
+      enum: ["cleanser", "toner", "serum", "treatment", "moisturizer", "sunscreen", "other"],
+      description: "The product type, classified from the front. 'other' if unsure.",
+    },
   },
-  required: ["isProductFront"],
+  required: ["isProductFront", "category"],
 };
 
 const FRONT_PROMPT =
@@ -226,11 +232,14 @@ const FRONT_PROMPT =
   "clearly shows the FRONT of a cosmetic/skincare product (a bottle, jar, tube, or box).\n" +
   "- If yes: set isProductFront=true, frontRejectReason=null, and set productName to " +
   "the brand + product name exactly as printed if clearly legible (else productName=null). " +
-  "Do NOT guess or invent a name.\n" +
+  "Do NOT guess or invent a name. Also classify the product type into exactly one of: " +
+  "cleanser, toner, serum, treatment, moisturizer, sunscreen, other. Use 'treatment' for " +
+  "retinoids, exfoliating acids, and spot treatments. Use 'other' if unsure.\n" +
   "- If it is NOT a product front (a person/face/selfie, scenery, an unrelated object, " +
   "or just an ingredient-list close-up): set isProductFront=false, give a short " +
   "user-facing frontRejectReason (e.g. \"This looks like a photo of a person, not a " +
-  "product.\"), and productName=null. Never invent a name from a non-product image.";
+  "product.\"), productName=null, and category=other. Never invent a name or category " +
+  "from a non-product image.";
 
 /**
  * Read the optional FRONT image: is it a product front, and what's its name?

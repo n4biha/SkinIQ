@@ -36,6 +36,7 @@ create table if not exists results (
   share_token    text,                 -- null = private; set = opt-in public link
   scan_id        uuid references scans(id) on delete cascade,
   product_name   text,
+  category       text,                 -- product type (best-effort); null → "other"
   overall_score  numeric,
   verdict        text,
   summary        text,
@@ -85,6 +86,7 @@ create unique index if not exists profiles_user_id_key on profiles(user_id);
 -- Opt-in share links look reports up by this unguessable token (unique; many NULLs ok).
 alter table results add column if not exists share_token text;
 create unique index if not exists results_share_token_key on results(share_token);
+alter table results add column if not exists category text;
 
 -- Lock everything down by default (server service-role key bypasses this).
 alter table profiles    enable row level security;

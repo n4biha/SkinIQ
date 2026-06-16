@@ -35,6 +35,13 @@
   object-fit: cover;
 }
 
+.badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
 .badge {
   display: inline-block;
   padding: 3px 12px;
@@ -43,7 +50,18 @@
   color: var(--green-dark);
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: var(--space-2);
+}
+
+/* Neutral chip — the product category (same label the planner will use). */
+.category {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .name {

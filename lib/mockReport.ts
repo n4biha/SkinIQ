@@ -12,6 +12,7 @@ export const MOCK_REPORT: Report = {
   scannedOn: "June 11, 2026",
   overallScore: 8.6,
   verdict: "Good Match",
+  category: "serum",
   summary: "Good match for your skin",
   highlights: [
     "Niacinamide helps regulate oil and calm breakouts",

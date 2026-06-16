@@ -1,4 +1,5 @@
 import type { Report } from "@/lib/types";
+import { CATEGORY_LABELS } from "@/lib/category";
 import styles from "./ScoreHeader.module.css";
 
 export default function ScoreHeader({ report }: { report: Report }) {
@@ -26,7 +27,10 @@ export default function ScoreHeader({ report }: { report: Report }) {
           )}
         </div>
         <div>
-          <span className={styles.badge}>{report.verdict}</span>
+          <div className={styles.badges}>
+            <span className={styles.badge}>{report.verdict}</span>
+            <span className={styles.category}>{CATEGORY_LABELS[report.category]}</span>
+          </div>
           <h1 className={styles.name}>{report.productName}</h1>
           <p className={styles.scanned}>Scanned on {report.scannedOn}</p>
         </div>

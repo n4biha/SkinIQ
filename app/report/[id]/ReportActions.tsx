@@ -16,7 +16,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ScoreHeader from "@/components/ScoreHeader";
-import type { Report } from "@/lib/types";
+import { ProductCategorySchema, type ProductCategory, type Report } from "@/lib/types";
+import { CATEGORY_LABELS } from "@/lib/category";
 import styles from "./report.module.css";
 
 type Props = {
@@ -40,6 +41,10 @@ export default function ReportActions({
   const initialProductName = report.productName;
   const [displayName, setDisplayName] = useState(initialProductName);
   const [editing, setEditing] = useState(false);
+
+  // ---- Optimistic category (user-correctable best-effort guess) ----
+  const initialCategory = report.category;
+  const [displayCategory, setDisplayCategory] = useState<ProductCategory>(initialCategory);
 
   // ---- Share link ----
   const [token, setToken] = useState<string | null>(initialShareToken ?? null);
@@ -73,6 +78,21 @@ export default function ReportActions({
   function cancelEdit() {
     setDisplayName(initialProductName);
     setEditing(false);
+  }
+
+  async function changeCategory(next: ProductCategory) {
+    setDisplayCategory(next); // optimistic — chip updates instantly
+    try {
+      const res = await fetch(`/api/reports/${reportId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: next }),
+      });
+      if (!res.ok) throw new Error("category update failed");
+      router.refresh();
+    } catch {
+      setDisplayCategory(initialCategory); // roll back on failure
+    }
   }
 
   async function enableShare() {
@@ -139,6 +159,23 @@ export default function ReportActions({
           )}
         </div>
 
+        {canShare && (
+          <label className={styles.categoryRow}>
+            <span className={styles.categoryLabel}>Category</span>
+            <select
+              className={styles.categorySelect}
+              value={displayCategory}
+              onChange={(e) => changeCategory(e.target.value as ProductCategory)}
+            >
+              {ProductCategorySchema.options.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         {editing && (
           <div className={styles.renameRow}>
             <input
@@ -189,8 +226,10 @@ export default function ReportActions({
         )}
       </div>
 
-      {/* Header reads the optimistic name so a rename shows instantly. */}
-      <ScoreHeader report={{ ...report, productName: displayName }} />
+      {/* Header reads the optimistic name + category so edits show instantly. */}
+      <ScoreHeader
+        report={{ ...report, productName: displayName, category: displayCategory }}
+      />
     </>
   );
 }

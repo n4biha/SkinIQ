@@ -273,6 +273,17 @@
   overflow: hidden;
 }
 
+.cardCategory {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green-dark);
+  background: var(--green-soft);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin-bottom: 4px;
+}
+
 .meta {
   font-size: 13px;
   color: var(--muted);

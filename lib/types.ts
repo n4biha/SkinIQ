@@ -112,14 +112,34 @@ export const LabelReadingSchema = z.object({
   notes: z.array(IngredientNoteSchema).default([]),
 });
 
+/* ---- Product category (drives planner step labels, ordering, timing) ---- */
+
+// Small canonical enum. Intent:
+//   • treatment  = actives like retinoids, exfoliating acids, spot treatments
+//                  (the things that drive conflicts/timing).
+//   • serum      = lighter leave-on serums (vitamin C, niacinamide, hydrators).
+//   • other      = anything that doesn't fit (masks, eye cream, oils, mists) —
+//                  a safe fallback; never guess wildly to avoid it.
+export const ProductCategorySchema = z.enum([
+  "cleanser",
+  "toner",
+  "serum",
+  "treatment",
+  "moisturizer",
+  "sunscreen",
+  "other",
+]);
+
 /* ---- What Gemini returns when it reads the FRONT of a product (optional slot) ---- */
 
-// Front is a SOFT gate: used only for the product name + thumbnail, never to
-// score. `productName` must be null when the image isn't a product front.
+// Front is a SOFT gate: used only for the product name + thumbnail + category,
+// never to score. `productName` must be null when the image isn't a product front.
 export const FrontReadingSchema = z.object({
   isProductFront: z.boolean().default(false),
   frontRejectReason: z.string().nullable().default(null),
   productName: z.string().nullable().default(null),
+  // `.catch` makes an invalid/garbage value fall back to "other" instead of throwing.
+  category: ProductCategorySchema.catch("other").default("other"),
 });
 
 /* ---- The full report the results page renders ---- */
@@ -137,6 +157,8 @@ export const ReportSchema = z.object({
   concernScores: z.array(ConcernScoreSchema),
   ingredients: z.array(IngredientNoteSchema),
   howToUse: z.string(),
+  // Product category (best-effort, from the front read). null/invalid → "other".
+  category: ProductCategorySchema.catch("other").default("other"),
   // Optional signed URL to the uploaded label photo (Phase C3). Absent → placeholder.
   imageUrl: z.string().optional(),
 });
@@ -160,6 +182,7 @@ export type IngredientNote = z.infer<typeof IngredientNoteSchema>;
 export type ConcernScore = z.infer<typeof ConcernScoreSchema>;
 export type LabelReading = z.infer<typeof LabelReadingSchema>;
 export type FrontReading = z.infer<typeof FrontReadingSchema>;
+export type ProductCategory = z.infer<typeof ProductCategorySchema>;
 export type Report = z.infer<typeof ReportSchema>;
 export type ReportCopy = z.infer<typeof ReportCopySchema>;
 export type Concern = z.infer<typeof ConcernSchema>;

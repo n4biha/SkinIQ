@@ -9,20 +9,26 @@
  * a face/scene/object must never produce a product name.
  */
 
-import type { FrontReading } from "@/lib/types";
+import type { FrontReading, ProductCategory } from "@/lib/types";
+import { coerceCategory } from "@/lib/category";
 
 export type FrontGate =
-  | { ok: true; productName: string | null }
+  | { ok: true; productName: string | null; category: ProductCategory }
   | { ok: false; reason: string };
 
 const DEFAULT_REASON = "We couldn't read a product name from the front photo.";
 
 export function gateFront(front: FrontReading): FrontGate {
   if (!front.isProductFront) {
+    // Not a product → never trust its name OR category (route falls back to "other").
     return { ok: false, reason: front.frontRejectReason ?? DEFAULT_REASON };
   }
   // A product front, but the name may still be absent/illegible — that's fine,
   // the caller falls back to the name chain. Trim empties to null.
   const name = front.productName?.trim();
-  return { ok: true, productName: name ? name : null };
+  return {
+    ok: true,
+    productName: name ? name : null,
+    category: coerceCategory(front.category),
+  };
 }

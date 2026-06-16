@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Stepper from "@/components/Stepper";
 import { useProfile } from "@/lib/profile-context";
 import CaptureSlot, { type Method } from "./CaptureSlot";
+import { ProductCategorySchema, type ProductCategory } from "@/lib/types";
+import { CATEGORY_LABELS } from "@/lib/category";
 import styles from "./scan.module.css";
 
 type View = "upload" | "analyzing";
@@ -44,6 +46,8 @@ export default function ScanPage() {
   const [frontMethod, setFrontMethod] = useState<Method>("upload");
   // At most ONE live camera at a time, shared between the slots.
   const [activeCameraSlot, setActiveCameraSlot] = useState<Slot | null>(null);
+  // Optional user-chosen product type. null = auto-detect from the front photo.
+  const [category, setCategory] = useState<ProductCategory | null>(null);
 
   // Scanning is step 2 — it needs a skin profile. If someone lands here without
   // one (e.g. via the sidebar before onboarding), send them to step 1 first.
@@ -104,6 +108,8 @@ export default function ScanPage() {
         body.frontImage = await fileToBase64(frontFile);
         body.frontMimeType = frontFile.type;
       }
+      // An explicit pick overrides the front-photo guess server-side.
+      if (category) body.category = category;
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -198,6 +204,32 @@ export default function ScanPage() {
             onFile={(f) => handleFile("back", f)}
             onReset={() => resetSlot("back")}
           />
+
+          <div className={styles.catField}>
+            <p className={styles.catLabel}>
+              Product type <span className={styles.catHint}>(optional)</span>
+            </p>
+            <p className={styles.catSub}>
+              We&apos;ll detect it from the front photo if you skip this.
+            </p>
+            <div className={styles.catChips}>
+              {ProductCategorySchema.options.map((c) => {
+                const active = category === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-pressed={active}
+                    className={`${styles.catChip} ${active ? styles.catChipActive : ""}`}
+                    // Click the active one again to clear it (back to auto-detect).
+                    onClick={() => setCategory(active ? null : c)}
+                  >
+                    {CATEGORY_LABELS[c]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className={styles.uploadActions}>
             <button

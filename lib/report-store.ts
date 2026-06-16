@@ -16,7 +16,8 @@
 import { randomBytes } from "node:crypto";
 import { isSupabaseConfigured, getServerSupabase } from "@/lib/supabase";
 import { signScanUrl, signScanUrls, removeScans } from "@/lib/storage";
-import { ReportSchema, type Report, type Verdict } from "@/lib/types";
+import { ReportSchema, type Report, type Verdict, type ProductCategory } from "@/lib/types";
+import { coerceCategory } from "@/lib/category";
 
 // In-memory fallback + same-process cache, kept across hot-reloads. We keep the
 // owner alongside the report so the same private-by-default rule applies whether
@@ -46,6 +47,7 @@ function reportToRow(r: Report, opts: { ownerId?: string; scanId?: string }) {
     user_id: opts.ownerId ?? null,
     scan_id: opts.scanId ?? null,
     product_name: r.productName,
+    category: r.category,
     overall_score: r.overallScore,
     verdict: r.verdict,
     summary: r.summary,
@@ -64,6 +66,7 @@ function rowToReport(row: Record<string, unknown>, imageUrl?: string): Report {
   return ReportSchema.parse({
     id: row.id,
     productName: row.product_name ?? "Scanned product",
+    category: row.category, // null/invalid → "other" via the schema's .catch
     scannedOn: formatDate(String(row.created_at)),
     overallScore: Number(row.overall_score),
     verdict: row.verdict,
@@ -102,6 +105,7 @@ export async function putReport(
 export type HistoryItem = {
   id: string;
   productName: string;
+  category: ProductCategory;
   scannedOn: string;
   /** Raw ISO timestamp (DB only) — used for sorting by date added. */
   createdAt?: string;
@@ -118,7 +122,7 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
     if (!ownerId) return [];
     const { data, error } = await getServerSupabase()
       .from(TABLE)
-      .select("id, product_name, overall_score, verdict, created_at, scans(image_url)")
+      .select("id, product_name, category, overall_score, verdict, created_at, scans(image_url)")
       .eq("user_id", ownerId)
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -134,6 +138,7 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
         return {
           id: r.id as string,
           productName: (r.product_name as string) ?? "Scanned product",
+          category: coerceCategory(r.category),
           scannedOn: formatDate(String(r.created_at)),
           createdAt: String(r.created_at),
           overallScore: Number(r.overall_score),
@@ -147,6 +152,7 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
   return [...reports.values()].reverse().slice(0, limit).map(({ report: r }) => ({
     id: r.id,
     productName: r.productName,
+    category: r.category,
     scannedOn: r.scannedOn,
     overallScore: r.overallScore,
     verdict: r.verdict,
@@ -318,6 +324,30 @@ export async function renameReport(
     .eq("user_id", ownerId);
   if (error) {
     console.warn("[report-store] rename failed:", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Change a report's product category (owner-scoped). Mirrors renameReport. */
+export async function setReportCategory(
+  id: string,
+  ownerId: string,
+  category: ProductCategory,
+): Promise<boolean> {
+  const mem = reports.get(id);
+  if (mem && (!mem.ownerId || mem.ownerId === ownerId)) {
+    mem.report = { ...mem.report, category };
+  }
+
+  if (!isSupabaseConfigured()) return true;
+  const { error } = await getServerSupabase()
+    .from(TABLE)
+    .update({ category })
+    .eq("id", id)
+    .eq("user_id", ownerId);
+  if (error) {
+    console.warn("[report-store] set category failed:", error.message);
     return false;
   }
   return true;

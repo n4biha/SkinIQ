@@ -3,7 +3,13 @@ import { gateFront } from "@/lib/front-gate";
 import type { FrontReading } from "@/lib/types";
 
 function front(p: Partial<FrontReading>): FrontReading {
-  return { isProductFront: false, frontRejectReason: null, productName: null, ...p };
+  return {
+    isProductFront: false,
+    frontRejectReason: null,
+    productName: null,
+    category: "other",
+    ...p,
+  };
 }
 
 describe("gateFront", () => {
@@ -41,5 +47,18 @@ describe("gateFront", () => {
     const out = gateFront(front({ isProductFront: true, productName: "   " }));
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.productName).toBeNull();
+  });
+
+  it("carries the category through on a product front", () => {
+    const out = gateFront(front({ isProductFront: true, category: "serum" }));
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.category).toBe("serum");
+  });
+
+  it("never yields a category from a rejected (non-product) front", () => {
+    const out = gateFront(front({ isProductFront: false, category: "serum" }));
+    expect(out.ok).toBe(false);
+    // reject result has no category at all — the route falls back to "other".
+    expect("category" in out).toBe(false);
   });
 });

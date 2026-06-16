@@ -28,7 +28,9 @@ import { saveScan } from "@/lib/storage";
 import {
   ReportSchema,
   SkinProfileSchema,
+  ProductCategorySchema,
   type LabelReading,
+  type ProductCategory,
   type Report,
   type ReportCopy,
 } from "@/lib/types";
@@ -42,6 +44,8 @@ const RequestSchema = z.object({
   // Front (product front) — optional; used only for the name + thumbnail.
   frontImage: z.string().min(1).optional(),
   frontMimeType: z.string().min(1).optional(),
+  // Optional user-chosen category from the scan page — authoritative when set.
+  category: ProductCategorySchema.optional(),
   profile: SkinProfileSchema,
 });
 
@@ -124,6 +128,7 @@ export async function POST(req: Request) {
     );
   }
   const { backImage, backMimeType, frontImage, frontMimeType, profile } = parsed.data;
+  const userCategory = parsed.data.category; // explicit pick wins over the front guess
 
   // 1.5) Rate-limit the paid pipeline, per signed-in user (or per IP for guests).
   const user = await getUser();
@@ -174,12 +179,14 @@ export async function POST(req: Request) {
   //      it can NEVER block or fail the scan. A rejected/face/errored front yields
   //      no name and is not used as the cover (and is never uploaded below).
   let frontName: string | null = null;
+  let frontCategory: ProductCategory = "other"; // never invent from a non-product
   let frontIsCover = false;
   if (frontImage && frontMimeType) {
     try {
       const fg = gateFront(await readProductFront(frontImage, frontMimeType));
       if (fg.ok) {
         frontName = fg.productName; // may be null (front, but no legible name)
+        frontCategory = fg.category;
         frontIsCover = true; // a real product front → good thumbnail
       } else {
         console.warn("[analyze] front photo rejected (soft):", fg.reason);
@@ -219,6 +226,7 @@ export async function POST(req: Request) {
     scannedOn: today(),
     overallScore: scored.overallScore,
     verdict: scored.verdict,
+    category: userCategory ?? frontCategory,
     concernScores: scored.concernScores,
     ingredients: scored.ingredients,
     ...copy,
