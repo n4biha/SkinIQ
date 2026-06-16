@@ -101,9 +101,25 @@ export const ConcernScoreSchema = z.object({
 export const LabelReadingSchema = z.object({
   productName: z.string(),
   ingredients: z.array(z.string()),
+  // Validation gate: true only when the image clearly shows a cosmetic ingredient
+  // (INCI) list. When false, `rejectReason` explains why and `ingredients` is
+  // empty — the route refuses instead of scoring a fabricated analysis. Defaults
+  // keep older callers/tests valid.
+  isIngredientList: z.boolean().default(true),
+  rejectReason: z.string().nullable().default(null),
   // Optional: readLabel no longer asks the model for per-ingredient notes
   // (the resolver + scoring produce them). Kept for backward compatibility.
   notes: z.array(IngredientNoteSchema).default([]),
+});
+
+/* ---- What Gemini returns when it reads the FRONT of a product (optional slot) ---- */
+
+// Front is a SOFT gate: used only for the product name + thumbnail, never to
+// score. `productName` must be null when the image isn't a product front.
+export const FrontReadingSchema = z.object({
+  isProductFront: z.boolean().default(false),
+  frontRejectReason: z.string().nullable().default(null),
+  productName: z.string().nullable().default(null),
 });
 
 /* ---- The full report the results page renders ---- */
@@ -143,6 +159,7 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 export type IngredientNote = z.infer<typeof IngredientNoteSchema>;
 export type ConcernScore = z.infer<typeof ConcernScoreSchema>;
 export type LabelReading = z.infer<typeof LabelReadingSchema>;
+export type FrontReading = z.infer<typeof FrontReadingSchema>;
 export type Report = z.infer<typeof ReportSchema>;
 export type ReportCopy = z.infer<typeof ReportCopySchema>;
 export type Concern = z.infer<typeof ConcernSchema>;

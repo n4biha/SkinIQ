@@ -19,9 +19,11 @@ import {
   ConcernSchema,
   IngredientAssessmentSchema,
   LabelReadingSchema,
+  FrontReadingSchema,
   ReportCopySchema,
   type IngredientAssessment,
   type LabelReading,
+  type FrontReading,
   type ReportCopy,
   type SkinProfile,
 } from "@/lib/types";
@@ -39,6 +41,19 @@ const MODEL = "gemini-2.5-flash";
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
+    isIngredientList: {
+      type: Type.BOOLEAN,
+      description:
+        "True ONLY if the image clearly shows a cosmetic product's readable " +
+        "ingredient/INCI list. False for selfies, scenery, or a front-of-package " +
+        "shot with no ingredient list.",
+    },
+    rejectReason: {
+      type: Type.STRING,
+      nullable: true,
+      description:
+        "When isIngredientList is false, a short user-facing reason. Null otherwise.",
+    },
     productName: {
       type: Type.STRING,
       description: "The product's name as printed on the packaging. Empty string if not visible.",
@@ -49,15 +64,24 @@ const RESPONSE_SCHEMA = {
       items: { type: Type.STRING },
     },
   },
-  required: ["productName", "ingredients"],
+  required: ["isIngredientList", "productName", "ingredients"],
 };
 
 const PROMPT =
-  "You are reading a skincare product's packaging. Transcribe the ingredient " +
-  "list (the INCI list) exactly as printed, in order, as an array of ingredient " +
-  "names. Also identify the product name if visible. Do not add, omit, classify, " +
-  "score, or comment on the ingredients — just the names. If the label is " +
-  "unreadable, return an empty ingredients array.";
+  "You are reading a skincare product's packaging. First decide whether the image " +
+  "clearly shows a cosmetic product's INGREDIENT (INCI) list — a readable list of " +
+  "ingredient names, usually on the back or side of the packaging.\n" +
+  "- If it does: set isIngredientList=true, rejectReason=null, transcribe the " +
+  "ingredient list exactly as printed, in order, as an array of ingredient names, " +
+  "and identify the product name if visible. Do not add, omit, classify, score, " +
+  "or comment — just the names.\n" +
+  "- If it does NOT (a person/selfie, scenery, random object, or a front-of-pack " +
+  "shot with no visible ingredient list, or text too blurry to read): set " +
+  "isIngredientList=false, give a short user-facing rejectReason (e.g. \"This " +
+  "looks like a photo of a person, not a product label.\", \"No ingredient list " +
+  "found — this may be the front of the package.\", or \"The text is too blurry " +
+  "to read.\"), and return an EMPTY ingredients array. Never invent ingredients. " +
+  "Be strict: a product photo with no visible ingredient list is still a rejection.";
 
 let client: GoogleGenAI | null = null;
 
@@ -165,6 +189,90 @@ export async function readLabel(
 
   // Zod is the gate: the rest of the pipeline only ever sees a valid LabelReading.
   return LabelReadingSchema.parse(parsed);
+}
+
+/* ------------------------------------------------------------------ */
+/* Front-of-product read (optional slot — name + thumbnail only)       */
+/* ------------------------------------------------------------------ */
+
+const FRONT_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    isProductFront: {
+      type: Type.BOOLEAN,
+      description:
+        "True ONLY if the image clearly shows the FRONT of a cosmetic/skincare " +
+        "product (bottle, jar, tube, box). False for a person/face, scenery, an " +
+        "unrelated object, or an ingredient-list close-up.",
+    },
+    productName: {
+      type: Type.STRING,
+      nullable: true,
+      description:
+        "Brand + product name exactly as printed on the front, if clearly legible. " +
+        "Null if not a product front or no name is readable. Never guess.",
+    },
+    frontRejectReason: {
+      type: Type.STRING,
+      nullable: true,
+      description: "When isProductFront is false, a short user-facing reason. Null otherwise.",
+    },
+  },
+  required: ["isProductFront"],
+};
+
+const FRONT_PROMPT =
+  "You are looking at the FRONT-slot photo of a skincare scan. Decide whether it " +
+  "clearly shows the FRONT of a cosmetic/skincare product (a bottle, jar, tube, or box).\n" +
+  "- If yes: set isProductFront=true, frontRejectReason=null, and set productName to " +
+  "the brand + product name exactly as printed if clearly legible (else productName=null). " +
+  "Do NOT guess or invent a name.\n" +
+  "- If it is NOT a product front (a person/face/selfie, scenery, an unrelated object, " +
+  "or just an ingredient-list close-up): set isProductFront=false, give a short " +
+  "user-facing frontRejectReason (e.g. \"This looks like a photo of a person, not a " +
+  "product.\"), and productName=null. Never invent a name from a non-product image.";
+
+/**
+ * Read the optional FRONT image: is it a product front, and what's its name?
+ * Used only for the product name + thumbnail — never for scoring. The caller
+ * (route) treats this as best-effort and runs gateFront on the result.
+ */
+export async function readProductFront(
+  imageBase64: string,
+  mimeType: string,
+): Promise<FrontReading> {
+  const ai = getClient();
+
+  const text = await withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: FRONT_PROMPT },
+            { inlineData: { mimeType, data: imageBase64 } },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: FRONT_RESPONSE_SCHEMA,
+        thinkingConfig: THINKING_OFF,
+        maxOutputTokens: 1024,
+      },
+    });
+    if (!response.text) throw new TransientError("readProductFront: empty response");
+    return response.text;
+  }, "readProductFront");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Gemini returned malformed JSON.");
+  }
+  return FrontReadingSchema.parse(parsed);
 }
 
 /* ------------------------------------------------------------------ */

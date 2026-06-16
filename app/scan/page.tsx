@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Stepper from "@/components/Stepper";
 import { useProfile } from "@/lib/profile-context";
-import CameraCapture from "./CameraCapture";
+import CaptureSlot, { type Method } from "./CaptureSlot";
 import styles from "./scan.module.css";
 
 type View = "upload" | "analyzing";
 
-// Which input the user is using to get a photo. Both end in the same `file`/
-// `preview` state and the same Analyze flow.
-type Method = "upload" | "camera";
+// The two independent capture slots.
+type Slot = "front" | "back";
 
 const ANALYZE_STEPS = [
   "Reading ingredient list",
@@ -31,12 +30,20 @@ export default function ScanPage() {
   const router = useRouter();
   const { profile, hydrated } = useProfile();
   const [view, setView] = useState<View>("upload");
-  const [preview, setPreview] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [method, setMethod] = useState<Method>("upload");
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Set when the API says the BACK photo isn't an ingredient list — a calm,
+  // expected outcome (not an error), holding the reason to show.
+  const [rejected, setRejected] = useState<string | null>(null);
+
+  // Two independent slots. Back (ingredients) is required; front is optional.
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
+  const [backMethod, setBackMethod] = useState<Method>("upload");
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [frontPreview, setFrontPreview] = useState<string | null>(null);
+  const [frontMethod, setFrontMethod] = useState<Method>("upload");
+  // At most ONE live camera at a time, shared between the slots.
+  const [activeCameraSlot, setActiveCameraSlot] = useState<Slot | null>(null);
 
   // Scanning is step 2 — it needs a skin profile. If someone lands here without
   // one (e.g. via the sidebar before onboarding), send them to step 1 first.
@@ -45,44 +52,74 @@ export default function ScanPage() {
     if (needsOnboarding) router.replace("/onboarding");
   }, [needsOnboarding, router]);
 
-  function handleFile(f?: File | null) {
+  function handleFile(slot: Slot, f?: File | null) {
     if (!f || !f.type.startsWith("image/")) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
+    const url = URL.createObjectURL(f);
+    if (slot === "back") {
+      setBackFile(f);
+      setBackPreview(url);
+    } else {
+      setFrontFile(f);
+      setFrontPreview(url);
+    }
     setError(null);
+    setRejected(null);
+    if (activeCameraSlot === slot) setActiveCameraSlot(null); // captured → stream done
   }
 
-  function onDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    handleFile(e.dataTransfer.files?.[0]);
-  }
-
-  /** Clear the chosen image so the user can shoot/pick another. */
-  function reset() {
-    setPreview(null);
-    setFile(null);
+  function resetSlot(slot: Slot) {
+    if (slot === "back") {
+      setBackFile(null);
+      setBackPreview(null);
+    } else {
+      setFrontFile(null);
+      setFrontPreview(null);
+    }
     setError(null);
+    setRejected(null);
+    if (activeCameraSlot === slot) setActiveCameraSlot(null);
   }
 
-  /** Switch input method, starting that method fresh. Leaving the camera here
-   *  unmounts CameraCapture, which stops its stream (camera light off). */
-  function selectMethod(next: Method) {
-    setMethod(next);
-    reset();
+  /** Switch a slot's input method; starts that slot fresh. Choosing camera claims
+   *  the single live stream (so the other slot's CameraCapture unmounts → light off). */
+  function setSlotMethod(slot: Slot, m: Method) {
+    if (slot === "back") setBackMethod(m);
+    else setFrontMethod(m);
+    resetSlot(slot);
+    if (m === "camera") setActiveCameraSlot(slot);
   }
 
   async function onAnalyze() {
-    if (!file) return;
+    if (!backFile) return; // back is required
     setView("analyzing");
     setError(null);
     try {
-      const image = await fileToBase64(file);
+      const body: Record<string, unknown> = {
+        backImage: await fileToBase64(backFile),
+        backMimeType: backFile.type,
+        profile,
+      };
+      // Front is optional + best-effort; the API ignores/soft-rejects bad fronts.
+      if (frontFile) {
+        body.frontImage = await fileToBase64(frontFile);
+        body.frontMimeType = frontFile.type;
+      }
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image, mimeType: file.type, profile }),
+        body: JSON.stringify(body),
       });
+      // Back isn't an ingredient list — expected, not a failure. Calm retry prompt.
+      if (res.status === 422) {
+        const data = await res.json().catch(() => null);
+        setBackFile(null);
+        setBackPreview(null);
+        setRejected(
+          data?.reason ?? "We couldn't find an ingredient list in this photo.",
+        );
+        setView("upload");
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? `Analysis failed (${res.status}).`);
@@ -110,10 +147,10 @@ export default function ScanPage() {
     <div className={styles.page}>
       <Stepper current={2} />
 
-      <h1 className={styles.heading}>Scan the ingredient list</h1>
+      <h1 className={styles.heading}>Scan your product</h1>
       <p className={styles.subtext}>
-        Take a clear photo of the product packaging — we read the ingredients
-        straight off the label.
+        Add a clear photo of the ingredient list (required). A photo of the
+        product front is optional — we use it for the name and thumbnail.
       </p>
 
       {error && (
@@ -122,84 +159,52 @@ export default function ScanPage() {
         </p>
       )}
 
-      <div className={styles.grid}>
-        {/* Input methods (upload + camera) → shared preview → Analyze */}
-        <div>
-          {/* Two ways to get the same photo. Switching resets any in-progress pick. */}
-          <div className={styles.methodToggle} role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={method === "upload"}
-              className={`${styles.methodBtn} ${
-                method === "upload" ? styles.methodActive : ""
-              }`}
-              onClick={() => selectMethod("upload")}
-            >
-              Upload photo
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={method === "camera"}
-              className={`${styles.methodBtn} ${
-                method === "camera" ? styles.methodActive : ""
-              }`}
-              onClick={() => selectMethod("camera")}
-            >
-              Take photo
-            </button>
-          </div>
+      {rejected && (
+        <div className={styles.rejected}>
+          <p className={styles.rejectedTitle}>We couldn&apos;t read an ingredient list</p>
+          <p className={styles.rejectedReason}>{rejected}</p>
+          <p className={styles.rejectedHint}>
+            Make sure the ingredient-list photo shows the list on the back or side
+            of the packaging — see the photo tips on the right.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setRejected(null)}
+          >
+            Try another photo
+          </button>
+        </div>
+      )}
 
-          {/* Once an image exists, both methods share this preview + Analyze. */}
-          {preview ? (
-            <div className={styles.previewWrap}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="Selected label" className={styles.preview} />
-            </div>
-          ) : method === "upload" ? (
-            <div
-              className={`${styles.dropzone} ${dragging ? styles.dragging : ""}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
-              onClick={() => inputRef.current?.click()}
-              role="button"
-              tabIndex={0}
-            >
-              <span className={styles.dropIcon}>
-                <ImageIcon />
-              </span>
-              <p className={styles.dropTitle}>Upload photo</p>
-              <p className={styles.dropHint}>or drag and drop</p>
-              <p className={styles.dropMeta}>JPG, PNG up to 10MB</p>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
-            </div>
-          ) : (
-            // Camera capture funnels into the same handleFile as upload.
-            <CameraCapture onCapture={handleFile} />
-          )}
+      <div className={styles.grid}>
+        <div className={styles.slots}>
+          <CaptureSlot
+            title="Front of product (optional)"
+            method={frontMethod}
+            preview={frontPreview}
+            cameraActive={activeCameraSlot === "front"}
+            onMethod={(m) => setSlotMethod("front", m)}
+            onFile={(f) => handleFile("front", f)}
+            onReset={() => resetSlot("front")}
+          />
+
+          <CaptureSlot
+            title="Ingredient list (required)"
+            method={backMethod}
+            preview={backPreview}
+            cameraActive={activeCameraSlot === "back"}
+            onMethod={(m) => setSlotMethod("back", m)}
+            onFile={(f) => handleFile("back", f)}
+            onReset={() => resetSlot("back")}
+          />
 
           <div className={styles.uploadActions}>
-            {preview && (
-              <button type="button" className="btn btn-secondary" onClick={reset}>
-                {method === "camera" ? "Retake" : "Choose another"}
-              </button>
-            )}
             <button
               type="button"
               className="btn btn-primary"
               onClick={onAnalyze}
-              disabled={!preview}
+              disabled={!backFile}
             >
               Analyze product →
             </button>
@@ -303,16 +308,6 @@ function Analyzing() {
 }
 
 /* ---- Icons ---- */
-
-function ImageIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="34" height="34" fill="none" aria-hidden>
-      <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="8.5" cy="9.5" r="1.8" stroke="currentColor" strokeWidth="1.5" />
-      <path d="m4 17 4.5-4.5 4 4 3-3L20 17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function CheckIcon() {
   return (

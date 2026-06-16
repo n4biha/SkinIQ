@@ -295,6 +295,34 @@ export async function deleteReport(id: string, ownerId: string): Promise<boolean
   return true;
 }
 
+/** Rename a report (owner-scoped). Updates the in-memory copy and the DB row. */
+export async function renameReport(
+  id: string,
+  ownerId: string,
+  name: string,
+): Promise<boolean> {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+
+  // Update the same-process copy (covers in-memory reads + the no-DB case).
+  const mem = reports.get(id);
+  if (mem && (!mem.ownerId || mem.ownerId === ownerId)) {
+    mem.report = { ...mem.report, productName: trimmed };
+  }
+
+  if (!isSupabaseConfigured()) return true;
+  const { error } = await getServerSupabase()
+    .from(TABLE)
+    .update({ product_name: trimmed })
+    .eq("id", id)
+    .eq("user_id", ownerId);
+  if (error) {
+    console.warn("[report-store] rename failed:", error.message);
+    return false;
+  }
+  return true;
+}
+
 /** Delete ALL of a user's reports, plus their scans + stored photos.
  *  Owner-scoped. Returns how many reports were removed. */
 export async function clearReports(ownerId: string): Promise<number> {

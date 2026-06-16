@@ -26,6 +26,36 @@
   margin-bottom: var(--space-5);
 }
 
+/* Not-a-label outcome — calm and expected, not a red error. */
+.rejected {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--green-soft);
+  border: 1px solid #d3e6da;
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.rejectedTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--green-dark);
+}
+
+.rejectedReason {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.rejectedHint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -96,6 +126,38 @@
 .uploadActions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---- Capture slots (front + back) ---- */
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+}
+
+.slotTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+/* Compact the capture boxes since two are stacked. */
+.slot .dropzone,
+.slot .previewWrap,
+.slot .camera {
+  min-height: 200px;
+}
+
+.slotActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
 }
 
 /* ---- Method toggle (Upload / Take photo) ---- */

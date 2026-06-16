@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import Stepper from "@/components/Stepper";
-import ScoreHeader from "@/components/ScoreHeader";
 import ResultTabs from "@/components/ResultTabs";
 import ReportActions from "./ReportActions";
 import { MOCK_REPORT } from "@/lib/mockReport";
@@ -37,9 +36,13 @@ export default async function ReportPage({
     <div className={styles.page}>
       <Stepper current={4} />
 
-      <ReportActions reportId={id} canShare={canShare} initialShareToken={shareToken} />
-
-      <ScoreHeader report={report} />
+      {/* ReportActions renders the ScoreHeader so a rename updates it instantly. */}
+      <ReportActions
+        report={report}
+        reportId={id}
+        canShare={canShare}
+        initialShareToken={shareToken}
+      />
 
       <ResultTabs report={report} />
 

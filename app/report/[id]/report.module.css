@@ -19,6 +19,31 @@
   gap: var(--space-3);
 }
 
+/* ---- Rename row (owner only) ---- */
+
+.renameRow {
+  width: 100%;
+  display: flex;
+  gap: var(--space-3);
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.renameInput:focus {
+  outline: none;
+  border-color: var(--green);
+}
+
 /* ---- Share link box (owner only) ---- */
 
 .shareBox {
