@@ -20,6 +20,7 @@ import { resolveIngredients } from "@/lib/ingredients/resolve";
 import { putReport } from "@/lib/report-store";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getUser } from "@/lib/supabase-server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { saveScan } from "@/lib/storage";
 import {
   ReportSchema,
@@ -93,6 +94,12 @@ function buildFallbackCopy(
   };
 }
 
+/** Best-effort client IP for rate-limiting guests (first hop of x-forwarded-for). */
+function clientIp(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  return fwd?.split(",")[0]?.trim() || "anon";
+}
+
 export async function POST(req: Request) {
   // 1) Validate the request body.
   let body: unknown;
@@ -110,6 +117,17 @@ export async function POST(req: Request) {
     );
   }
   const { image, mimeType, profile } = parsed.data;
+
+  // 1.5) Rate-limit the paid pipeline, per signed-in user (or per IP for guests).
+  const user = await getUser();
+  const rlKey = user?.id ?? clientIp(req);
+  const rl = checkRateLimit(`analyze:${rlKey}`);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "You're scanning too fast — please wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } },
+    );
+  }
 
   // 2) Read the label with Gemini.
   let label: LabelReading;
@@ -177,8 +195,7 @@ export async function POST(req: Request) {
 
   // 6) Persist only for a signed-in user: upload the photo + save the report to
   //    their account. Guests get a working report (kept in memory for this session)
-  //    but nothing is saved. An image failure is non-fatal.
-  const user = await getUser();
+  //    but nothing is saved. An image failure is non-fatal. (`user` from step 1.5.)
   let scanId: string | undefined;
   if (user && isSupabaseConfigured()) {
     scanId = (await saveScan(image, mimeType, user.id)) ?? undefined;

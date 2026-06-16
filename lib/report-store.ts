@@ -13,13 +13,17 @@
  * plain JS arrays.
  */
 
+import { randomBytes } from "node:crypto";
 import { isSupabaseConfigured, getServerSupabase } from "@/lib/supabase";
 import { signScanUrl, signScanUrls, removeScans } from "@/lib/storage";
 import { ReportSchema, type Report, type Verdict } from "@/lib/types";
 
-// In-memory fallback + same-process cache, kept across hot-reloads.
+// In-memory fallback + same-process cache, kept across hot-reloads. We keep the
+// owner alongside the report so the same private-by-default rule applies whether
+// a report is served from the DB or memory.
+type StoredReport = { report: Report; ownerId?: string };
 const globalForReports = globalThis as unknown as {
-  __skiniqReports?: Map<string, Report>;
+  __skiniqReports?: Map<string, StoredReport>;
 };
 const reports =
   globalForReports.__skiniqReports ?? (globalForReports.__skiniqReports = new Map());
@@ -81,7 +85,7 @@ export async function putReport(
   report: Report,
   opts: { ownerId?: string; scanId?: string } = {},
 ): Promise<string> {
-  reports.set(report.id, report);
+  reports.set(report.id, { report, ownerId: opts.ownerId });
 
   if (isSupabaseConfigured() && opts.ownerId) {
     const { error } = await getServerSupabase()
@@ -140,7 +144,7 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
     }
   }
   // Fallback: in-memory, most-recent-first.
-  return [...reports.values()].reverse().slice(0, limit).map((r) => ({
+  return [...reports.values()].reverse().slice(0, limit).map(({ report: r }) => ({
     id: r.id,
     productName: r.productName,
     scannedOn: r.scannedOn,
@@ -150,9 +154,12 @@ export async function listReports(ownerId?: string, limit = 50): Promise<History
   }));
 }
 
-/** Look up a report by id — from the DB if configured, else in-memory.
- *  When the row links a scan, mints a signed URL for its photo. */
-export async function getReport(id: string): Promise<Report | undefined> {
+/** A report plus who owns it (for private-by-default access) and its share token. */
+export type OwnedReport = { report: Report; ownerId?: string; shareToken?: string };
+
+/** Look up a report by id — from the DB if configured, else in-memory. Returns the
+ *  owner id so the caller can enforce owner-only access. Mints a signed photo URL. */
+export async function getReport(id: string): Promise<OwnedReport | undefined> {
   if (isSupabaseConfigured()) {
     // Embed the linked scan's image path via the results.scan_id foreign key.
     const { data, error } = await getServerSupabase()
@@ -168,13 +175,90 @@ export async function getReport(id: string): Promise<Report | undefined> {
         const imageUrl = scan?.image_url
           ? (await signScanUrl(scan.image_url)) ?? undefined
           : undefined;
-        return rowToReport(data, imageUrl);
+        return {
+          report: rowToReport(data, imageUrl),
+          ownerId: (data.user_id as string) ?? undefined,
+          shareToken: (data.share_token as string) ?? undefined,
+        };
       } catch (err) {
         console.warn("[report-store] stored row failed validation:", err);
       }
     }
   }
-  return reports.get(id);
+  const mem = reports.get(id);
+  return mem ? { report: mem.report, ownerId: mem.ownerId } : undefined;
+}
+
+/** A report fetched by its public share token (read-only; no owner check). */
+export async function getReportByShareToken(token: string): Promise<Report | undefined> {
+  if (!isSupabaseConfigured() || !token) return undefined;
+  const { data, error } = await getServerSupabase()
+    .from(TABLE)
+    .select("*, scans(image_url)")
+    .eq("share_token", token)
+    .maybeSingle();
+  if (error) {
+    console.warn("[report-store] share lookup failed:", error.message);
+    return undefined;
+  }
+  if (!data) return undefined;
+  try {
+    const scan = data.scans as { image_url?: string } | null;
+    const imageUrl = scan?.image_url
+      ? (await signScanUrl(scan.image_url)) ?? undefined
+      : undefined;
+    return rowToReport(data, imageUrl);
+  } catch (err) {
+    console.warn("[report-store] shared row failed validation:", err);
+    return undefined;
+  }
+}
+
+/** Enable sharing: return the report's share token (creating one if needed).
+ *  Owner-scoped; null if the report isn't this user's or the DB isn't available. */
+export async function createShareToken(
+  id: string,
+  ownerId: string,
+): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  const sb = getServerSupabase();
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("share_token")
+    .eq("id", id)
+    .eq("user_id", ownerId)
+    .maybeSingle();
+  if (error || !data) return null; // not found or not the owner
+
+  const existing = (data as { share_token?: string }).share_token;
+  if (existing) return existing; // already shared — idempotent
+
+  const token = randomBytes(32).toString("base64url"); // unguessable, not the id
+  const { error: upErr } = await sb
+    .from(TABLE)
+    .update({ share_token: token })
+    .eq("id", id)
+    .eq("user_id", ownerId);
+  if (upErr) {
+    console.warn("[report-store] share create failed:", upErr.message);
+    return null;
+  }
+  return token;
+}
+
+/** Disable sharing: clear the share token for this owner's report. */
+export async function revokeShareToken(id: string, ownerId: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  const { error } = await getServerSupabase()
+    .from(TABLE)
+    .update({ share_token: null })
+    .eq("id", id)
+    .eq("user_id", ownerId);
+  if (error) {
+    console.warn("[report-store] share revoke failed:", error.message);
+    return false;
+  }
+  return true;
 }
 
 /** Delete one of a user's reports, plus its linked scan row + stored photo.

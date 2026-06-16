@@ -1,46 +1,34 @@
+/**
+ * Public, read-only shared report (Phase C · hardening).
+ *
+ * Reached only via an unguessable share token (NOT the report id). Renders the
+ * same score + tabs as the owner's report but with no actions/editing. Returns
+ * 404 for an unknown/revoked token.
+ */
+
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import Stepper from "@/components/Stepper";
 import ScoreHeader from "@/components/ScoreHeader";
 import ResultTabs from "@/components/ResultTabs";
-import ReportActions from "./ReportActions";
-import { MOCK_REPORT } from "@/lib/mockReport";
-import { getReport } from "@/lib/report-store";
-import { getUser } from "@/lib/supabase-server";
-import type { Report } from "@/lib/types";
-import styles from "./report.module.css";
+import { getReportByShareToken } from "@/lib/report-store";
+import styles from "@/app/report/[id]/report.module.css";
 
-export default async function ReportPage({
+export default async function SharedReportPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ token: string }>;
 }) {
-  const { id } = await params;
-
-  let report: Report;
-  let canShare = false;
-  let shareToken: string | undefined;
-
-  if (id === "sample") {
-    // Public demo report.
-    report = MOCK_REPORT;
-  } else {
-    const [user, found] = await Promise.all([getUser(), getReport(id)]);
-    if (!found) notFound();
-    // Private by default: an owned report is visible only to its owner.
-    if (found.ownerId && found.ownerId !== user?.id) notFound();
-    report = found.report;
-    canShare = !!found.ownerId && found.ownerId === user?.id;
-    shareToken = found.shareToken;
-  }
+  const { token } = await params;
+  const report = await getReportByShareToken(token);
+  if (!report) notFound();
 
   return (
     <div className={styles.page}>
-      <Stepper current={4} />
-
-      <ReportActions reportId={id} canShare={canShare} initialShareToken={shareToken} />
+      <div className={styles.sharedHeader}>
+        <span className={styles.sharedBadge}>Shared SkinIQ report</span>
+      </div>
 
       <ScoreHeader report={report} />
-
       <ResultTabs report={report} />
 
       <div className={styles.howToUse}>
@@ -57,11 +45,13 @@ export default async function ReportPage({
         Informational only — not medical advice. Patch-test new products and
         consult a dermatologist for any skin concerns.
       </p>
+
+      <p className={styles.sharedCta}>
+        <Link href="/">Analyze your own products with SkinIQ →</Link>
+      </p>
     </div>
   );
 }
-
-/* ---- Icons ---- */
 
 function InfoIcon() {
   return (
