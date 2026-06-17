@@ -2,26 +2,33 @@
  * SkinIQ scoring engine.
  *
  * THE RULES LIVE HERE. The overall match score and per-concern percentages are
- * computed deterministically from the resolved, GRADED ingredient assessments
- * (helps: strong/moderate per concern; irritation: none/low/medium/high) + the
- * user's profile. The model grades ingredients; it never sets a number. Same
- * inputs -> identical output (pure, synchronous, no I/O).
+ * computed deterministically from the resolved, GRADED ingredients (the three-state
+ * knowledge-base `IngredientGrade`: per concern `helps-strong|moderate|slight |
+ * neutral | aggravates`, plus `irritation/comedogenic/fragrance/confidence`) + the
+ * user's profile. The model grades ingredients; it never sets a number. Same inputs
+ * -> identical output (pure, synchronous, no I/O).
  *
- * Calibrated to grade strictly: products only earn high scores when they have
- * strong actives for the concerns the user actually selected and few negatives.
+ * THREE-STATE RULE: only `helps-*` is rewarded; `aggravates` is penalized; `neutral`
+ * (and any concern an ingredient simply doesn't address) is NEVER penalized — a
+ * product that does nothing for your concerns sits at the neutral baseline, it isn't
+ * dragged down. Contributions are weighted by ingredient POSITION (top of the label =
+ * more concentrated = more impact) and the grader's CONFIDENCE. The constants below
+ * are FITTED to the calibration set (test/calibration.ts).
  */
 
+import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
 import type {
   Concern,
+  ConcernGrade,
   ConcernScore,
-  HelpStrength,
+  ConfidenceLevel,
+  IngredientGrade,
   IngredientNote,
   IrritationRisk,
   SkinProfile,
   Verdict,
 } from "@/lib/types";
 import type { ResolvedIngredient } from "@/lib/ingredients/types";
-import { normalizeName } from "@/lib/ingredients/normalize";
 
 /* ------------------------------------------------------------------ */
 /* Canonical concern model                                             */
@@ -103,6 +110,57 @@ function displayConcerns(profile: SkinProfile): Concern[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Scoring constants — FITTED to test/calibration.ts (±0.5)            */
+/* ------------------------------------------------------------------ */
+
+const BASELINE = 5.0;
+
+/** Reward magnitude per concern at full weight (top of label, high confidence). */
+const HELP_REWARD: Record<ConcernGrade, number> = {
+  "helps-strong": 1.9,
+  "helps-moderate": 1.0,
+  "helps-slight": 0.6,
+  neutral: 0,
+  aggravates: 0,
+};
+
+/**
+ * When a concern has more than one helper, the strongest is the primary; each
+ * additional helper adds a diminished share (depth bonus — a product stacked with
+ * hydrators beats one with a single hydrator).
+ */
+const DEPTH_WEIGHT = 0.45;
+
+/**
+ * Floor for a concern addressed by a MODERATE active: a single moderate helper deep
+ * in the list still counts as meaningfully addressing the concern (a strong helper is
+ * already rewarded enough on its own; this only lifts the otherwise-thin moderate case).
+ */
+const ADDRESSED_FLOOR = 1.3;
+
+/** Penalty magnitude when an ingredient actively works AGAINST a relevant concern. */
+const AGGRAVATE_PENALTY = 1.3;
+
+/** Position model: top of the label = most concentrated. Drops off quadratically so
+ *  actives below the ~1% line (deep in the list) contribute little. */
+const POSITION_K = 0.08;
+function positionWeight(index: number): number {
+  return 1 / (1 + POSITION_K * index * index);
+}
+
+/** Confidence discount — a low-confidence grade pulls less weight. */
+const CONFIDENCE_WEIGHT: Record<ConfidenceLevel, number> = {
+  high: 1.0,
+  medium: 0.85,
+  low: 0.6,
+};
+
+const ALLERGY_PENALTY = 4.0;
+const FRAGRANCE_PENALTY = { sensitive: 2.0, default: 0.5 };
+/** Cumulative comedogenic penalty (acne-prone only), per ingredient, position-weighted. */
+const COMEDOGENIC_PENALTY = { high: 0.9, moderate: 0.45 }; // com >= 4 vs com 2–3
+
+/* ------------------------------------------------------------------ */
 /* Scoring                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -115,29 +173,67 @@ export type ScoringResult = {
   ingredients: IngredientNote[];
 };
 
-type MatchedIngredient = {
+const RISK_RANK: Record<IrritationRisk, number> = { none: 0, low: 1, medium: 2, high: 3 };
+
+/** One ingredient prepared for scoring: its grade + label position + derived weights. */
+type GradedIngredient = {
   raw: string;
   info: ResolvedIngredient["info"];
+  grade: IngredientGrade | undefined;
+  posWeight: number;
+  confWeight: number;
   isAllergyHit: boolean;
 };
 
-const RISK_RANK: Record<IrritationRisk, number> = { none: 0, low: 1, medium: 2, high: 3 };
+/** The three-state grade an ingredient holds for a concern (or `neutral` if absent). */
+function gradeFor(g: GradedIngredient, concern: Concern): ConcernGrade {
+  return g.grade?.concerns[normalizeConcernKey(concern)] ?? "neutral";
+}
 
-/** Strongest help any ingredient offers for a concern (or null if none). */
-function bestHelp(matched: MatchedIngredient[], concern: Concern): HelpStrength | null {
-  let best: HelpStrength | null = null;
-  for (const m of matched) {
-    const s = m.info?.helps[concern];
-    if (s === "strong") return "strong";
-    if (s === "moderate") best = "moderate";
+const HELP_RANK: Record<ConcernGrade, number> = {
+  "helps-strong": 3,
+  "helps-moderate": 2,
+  "helps-slight": 1,
+  neutral: 0,
+  aggravates: 0,
+};
+
+/** Strongest help grade any ingredient offers for a concern (null if none help). */
+function bestHelpGrade(graded: GradedIngredient[], concern: Concern): ConcernGrade | null {
+  let best: ConcernGrade | null = null;
+  for (const g of graded) {
+    const cell = gradeFor(g, concern);
+    if (HELP_RANK[cell] > 0 && (best === null || HELP_RANK[cell] > HELP_RANK[best])) best = cell;
   }
   return best;
 }
 
-function maxIrritation(matched: MatchedIngredient[]): IrritationRisk {
-  let worst: IrritationRisk = "none";
-  for (const m of matched) {
-    if (m.info && RISK_RANK[m.info.irritation] > RISK_RANK[worst]) worst = m.info.irritation;
+/** Reward for a selected concern: weighted primary helper + diminished depth bonus,
+ *  floored when a moderate+ active addresses it. */
+function concernReward(graded: GradedIngredient[], concern: Concern): number {
+  const contributions: number[] = [];
+  for (const g of graded) {
+    const value = HELP_REWARD[gradeFor(g, concern)];
+    if (value > 0) contributions.push(value * g.posWeight * g.confWeight);
+  }
+  if (contributions.length === 0) return 0;
+  contributions.sort((a, b) => b - a);
+  const primary = contributions[0];
+  const depth = contributions.slice(1).reduce((sum, v) => sum + v, 0) * DEPTH_WEIGHT;
+  let reward = primary + depth;
+  // Only lift the thin single-moderate case; a strong helper deep in the list stays
+  // position-discounted (that's the whole point of the SA-high/SA-low pair).
+  if (bestHelpGrade(graded, concern) === "helps-moderate") reward = Math.max(reward, ADDRESSED_FLOOR);
+  return reward;
+}
+
+/** Penalty for a concern an ingredient actively aggravates (worst weighted offender). */
+function aggravatePenalty(graded: GradedIngredient[], concern: Concern): number {
+  let worst = 0;
+  for (const g of graded) {
+    if (gradeFor(g, concern) === "aggravates") {
+      worst = Math.max(worst, AGGRAVATE_PENALTY * g.posWeight * g.confWeight);
+    }
   }
   return worst;
 }
@@ -147,9 +243,9 @@ function irritationPenalty(risk: IrritationRisk, sensitive: boolean): number {
     case "high":
       return sensitive ? 2.5 : 1.5;
     case "medium":
-      return sensitive ? 1.5 : 0.75;
+      return sensitive ? 1.5 : 0.5;
     case "low":
-      return sensitive ? 0.5 : 0;
+      return sensitive ? 0.4 : 0;
     default:
       return 0;
   }
@@ -198,36 +294,52 @@ export function scoreProduct(
     profile.skinType === "oily" ||
     profile.skinType === "combination";
 
-  const matched: MatchedIngredient[] = resolved.map((r) => ({
+  const graded: GradedIngredient[] = resolved.map((r, index) => ({
     raw: r.raw,
     info: r.info,
+    grade: r.grade,
+    posWeight: positionWeight(index),
+    confWeight: r.grade ? CONFIDENCE_WEIGHT[r.grade.confidence] : 1,
     isAllergyHit: isAllergyHit(r.raw, allergies),
   }));
 
-  const worstIrritation = maxIrritation(matched);
-  const hasFragrance = matched.some((m) => m.info?.fragrance);
-  const maxComedogenic = matched.reduce(
-    (max, m) => Math.max(max, m.info?.comedogenic ?? 0),
-    0,
-  );
-  const allergyHits = matched.filter((m) => m.isAllergyHit).length;
+  // An allergy hit is a hard "avoid"; its −4 subsumes any fragrance/irritation/
+  // comedogenic nitpicks, so it's excluded from those aggregates (no double-dip).
+  const safe = graded.filter((g) => !g.isAllergyHit);
+  const worstIrritation = safe.reduce<IrritationRisk>((worst, g) => {
+    const risk = g.grade?.irritation ?? "none";
+    return RISK_RANK[risk] > RISK_RANK[worst] ? risk : worst;
+  }, "none");
+  const hasFragrance = safe.some((g) => g.grade?.fragrance);
+  const allergyHits = graded.filter((g) => g.isAllergyHit).length;
 
   /* ---- Overall score (0–10) ---- */
-  let score = 5.0;
+  let score = BASELINE;
 
-  // Reward strong/moderate help for selected concerns; penalize ignored ones.
+  // Reward helps-* for selected concerns; penalize aggravates. Neutral / unaddressed
+  // concerns are NOT penalized — silence is not a negative.
   for (const concern of scoredConcerns) {
-    const best = bestHelp(matched, concern);
-    score += best === "strong" ? 1.5 : best === "moderate" ? 0.75 : -1.0;
+    score += concernReward(graded, concern);
+    score -= aggravatePenalty(graded, concern);
+  }
+  // Trait-based: a sensitive user is harmed by anything that aggravates sensitivity
+  // or redness, even when they didn't list it as a concern.
+  if (profile.sensitive) {
+    for (const concern of ["sensitivity", "redness"] as Concern[]) {
+      if (!selectedSet.has(concern)) score -= aggravatePenalty(graded, concern);
+    }
   }
 
   score -= irritationPenalty(worstIrritation, sensitiveSkin);
-  if (hasFragrance) score -= sensitiveSkin ? 2.0 : 1.0;
+  if (hasFragrance) score -= sensitiveSkin ? FRAGRANCE_PENALTY.sensitive : FRAGRANCE_PENALTY.default;
   if (acneProne) {
-    if (maxComedogenic >= 4) score -= 1.5;
-    else if (maxComedogenic >= 2) score -= 0.75;
+    for (const g of safe) {
+      const com = g.grade?.comedogenic ?? 0;
+      if (com >= 4) score -= COMEDOGENIC_PENALTY.high * g.posWeight;
+      else if (com >= 2) score -= COMEDOGENIC_PENALTY.moderate * g.posWeight;
+    }
   }
-  score -= allergyHits * 4.0;
+  score -= allergyHits * ALLERGY_PENALTY;
 
   score = Math.round(clamp(score, 0, 10) * 10) / 10;
   const verdict = verdictFor(score);
@@ -235,9 +347,10 @@ export function scoreProduct(
   /* ---- Per-concern percentages (display set) ---- */
   const concernScores: ConcernScore[] = display.map((concern) => {
     let percent = 30;
-    const best = bestHelp(matched, concern);
-    if (best === "strong") percent += 35;
-    else if (best === "moderate") percent += 20;
+    const best = bestHelpGrade(graded, concern);
+    if (best === "helps-strong") percent += 35;
+    else if (best === "helps-moderate") percent += 20;
+    else if (best === "helps-slight") percent += 10;
 
     if (
       (concern === "sensitivity" || concern === "redness") &&
@@ -245,33 +358,38 @@ export function scoreProduct(
     ) {
       percent -= 20;
     }
+    if (aggravatePenalty(graded, concern) > 0) percent -= 20;
     if (allergyHits > 0) percent -= 25;
 
     return { label: CONCERN_LABELS[concern], percent: Math.round(clamp(percent, 5, 95)) };
   });
 
   /* ---- Per-ingredient notes + flags ---- */
-  const ingredients: IngredientNote[] = matched.map((m) => {
-    const info = m.info;
-    const benefitsUser =
-      !!info && Object.keys(info.helps).some((c) => selectedSet.has(c as Concern));
+  const ingredients: IngredientNote[] = graded.map((g) => {
+    const info = g.info;
+    const benefitsUser = scoredConcerns.some((c) => HELP_RANK[gradeFor(g, c)] > 0);
+    const aggravatesUser =
+      scoredConcerns.some((c) => gradeFor(g, c) === "aggravates") ||
+      (profile.sensitive &&
+        (gradeFor(g, "sensitivity") === "aggravates" || gradeFor(g, "redness") === "aggravates"));
     const isCaution =
-      !!info &&
-      (RISK_RANK[info.irritation] >= RISK_RANK.medium ||
-        (info.fragrance && sensitiveSkin) ||
-        (info.comedogenic >= 3 && acneProne));
+      !!g.grade &&
+      (aggravatesUser ||
+        RISK_RANK[g.grade.irritation] >= RISK_RANK.medium ||
+        (g.grade.fragrance && sensitiveSkin) ||
+        (g.grade.comedogenic >= 3 && acneProne));
 
     let flag: IngredientNote["flag"];
-    if (m.isAllergyHit) flag = "flag";
+    if (g.isAllergyHit) flag = "flag";
     else if (benefitsUser) flag = "good";
     else if (isCaution) flag = "caution";
 
     return {
-      name: info?.display ?? m.raw,
+      name: info?.display ?? g.raw,
       function: info?.function ?? "Unrecognized ingredient",
-      note: m.isAllergyHit
+      note: g.isAllergyHit
         ? "Matches one of your listed allergies — avoid."
-        : info?.note ?? "Not in our reference set yet.",
+        : info?.note || (g.grade ? "" : "Not in our reference set yet."),
       ...(flag ? { flag } : {}),
     };
   });
