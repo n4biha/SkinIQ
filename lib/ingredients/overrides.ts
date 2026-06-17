@@ -27,24 +27,24 @@ export type GradeOverride = {
 };
 
 // EU-labeled fragrance allergens: declared on labels, common reaction triggers.
-// → fragrance + at least medium irritation + aggravates sensitivity/redness.
+// → fragrance + at least medium irritation + moderately aggravates sensitivity/redness.
 const FRAGRANCE_ALLERGEN: GradeOverride = {
   fragrance: true,
   irritation: "medium",
-  concerns: { sensitivity: "aggravates", redness: "aggravates" },
+  concerns: { sensitivity: "aggravates-moderate", redness: "aggravates-moderate" },
 };
 
-// Potent essential oils / counter-irritants — stronger irritation floor.
+// Potent essential oils / counter-irritants — stronger irritation + strong harm.
 const POTENT_IRRITANT: GradeOverride = {
   fragrance: true,
   irritation: "high",
-  concerns: { sensitivity: "aggravates", redness: "aggravates" },
+  concerns: { sensitivity: "aggravates-strong", redness: "aggravates-strong" },
 };
 
 // High-comedogenic oils/esters — guaranteed warning for acne-prone users.
 const comedogenic = (rating: number): GradeOverride => ({
   comedogenic: rating,
-  concerns: { acne: "aggravates" },
+  concerns: { acne: "aggravates-moderate" },
 });
 
 /** [raw INCI name, pinned override]. Keyed by normalizeName when built. */
@@ -72,7 +72,7 @@ const SEED: Array<[string, GradeOverride]> = [
   ["Fragrance", FRAGRANCE_ALLERGEN],
 
   // ── Harsh / potent irritants (rationale: common reactivity triggers) ──
-  ["Alcohol Denat.", { irritation: "medium", concerns: { sensitivity: "aggravates" } }],
+  ["Alcohol Denat.", { irritation: "medium", concerns: { sensitivity: "aggravates-moderate" } }],
   ["Menthol", POTENT_IRRITANT],
   ["Mentha Piperita Oil", POTENT_IRRITANT], // peppermint
   ["Eucalyptus Globulus Leaf Oil", POTENT_IRRITANT],

@@ -28,6 +28,9 @@ function toResolved(c: CalibrationCase): ResolvedIngredient[] {
     for (const [concern, strength] of Object.entries(ci.helps ?? {})) {
       if (strength) concerns[normalizeConcernKey(concern)] = HELP_TO_GRADE[strength];
     }
+    for (const [concern, level] of Object.entries(ci.aggravates ?? {})) {
+      if (level) concerns[normalizeConcernKey(concern)] = `aggravates-${level}` as ConcernGrade;
+    }
     const grade: IngredientGrade = {
       irritation: ci.irritation ?? "none",
       comedogenic: ci.comedogenic ?? 0,

@@ -10,4 +10,6 @@
  * differently over time (nondeterministic). The `gradedAt` timestamp is metadata
  * only — it enables a manual, version-scoped re-grade if ever wanted, never auto-fires.
  */
-export const CURRENT_GRADE_VERSION = 1;
+// v2: `aggravates` became three graded levels (aggravates-slight/moderate/strong),
+// so old flat-`aggravates` grades must re-grade into the new harm scale.
+export const CURRENT_GRADE_VERSION = 2;

@@ -18,7 +18,8 @@
 import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
 import { CURRENT_GRADE_VERSION } from "@/lib/ingredients/version";
 import { lookupOverride, mergeOverride } from "@/lib/ingredients/overrides";
-import { aiGrader, type Grader } from "@/lib/ingredients/grade";
+import { aiGrader, aiConcernGrader, type Grader, type ConcernGrader } from "@/lib/ingredients/grade";
+import type { CustomConcern } from "@/lib/ingredients/types";
 import { isSupabaseConfigured, getServerSupabase } from "@/lib/supabase";
 import { IngredientGradeSchema, type ConcernGrade, type IngredientGrade } from "@/lib/types";
 
@@ -32,9 +33,9 @@ function mem(): Map<string, IngredientGrade> {
   return (g.__skiniqGrades ??= new Map());
 }
 
-/** The three-state rule as a pure sign — helps-* reward, aggravates penalty, neutral none. */
+/** The three-state rule as a pure sign — helps-* reward, aggravates-* penalty, neutral none. */
 export function concernContribution(grade: ConcernGrade): "reward" | "penalty" | "none" {
-  if (grade === "aggravates") return "penalty";
+  if (grade.startsWith("aggravates")) return "penalty";
   if (grade === "neutral") return "none";
   return "reward"; // helps-strong | helps-moderate | helps-slight
 }
@@ -107,9 +108,11 @@ async function dbPutMany(
  */
 export async function resolveGrades(
   names: string[],
-  opts: { grader?: Grader } = {},
+  opts: { grader?: Grader; concernGrader?: ConcernGrader; customConcerns?: CustomConcern[] } = {},
 ): Promise<Map<string, IngredientGrade>> {
   const grader = opts.grader ?? aiGrader;
+  const concernGrader = opts.concernGrader ?? aiConcernGrader;
+  const customConcerns = opts.customConcerns ?? [];
 
   // Unique normalized names + a representative raw name (for grading prompts).
   const rawByNorm = new Map<string, string>();
@@ -156,6 +159,36 @@ export async function resolveGrades(
       await dbPutMany(toPersist);
     } catch (err) {
       console.warn("[knowledge] grading failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  // ---- Phase B: fill any requested CUSTOM-concern cells ----
+  // Custom concerns live in the SAME grade record, keyed by their normalized key.
+  // A cell may already be present (a prior user introduced this concern → cache hit);
+  // grade only the misses, merge the new cell into the stored grade, and re-persist.
+  for (const { key, label } of customConcerns) {
+    const missing = uniqueNorm.filter((norm) => {
+      const g = base.get(norm);
+      return g !== undefined && g.concerns[key] === undefined;
+    });
+    if (missing.length === 0) continue;
+    try {
+      const graded = await concernGrader(missing.map((n) => rawByNorm.get(n) ?? n), label);
+      const toPersist: Array<{ name: string; grade: IngredientGrade }> = [];
+      for (const norm of missing) {
+        const g = base.get(norm);
+        const cell = graded.get(norm);
+        if (g && cell) {
+          g.concerns[key] = cell; // shared ref with mem() → cache stays current
+          toPersist.push({ name: norm, grade: g });
+        }
+      }
+      await dbPutMany(toPersist);
+    } catch (err) {
+      console.warn(
+        "[knowledge] custom-concern grading failed:",
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 

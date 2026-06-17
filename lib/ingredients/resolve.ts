@@ -14,8 +14,8 @@
 
 import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
 import { resolveGrades } from "@/lib/ingredients/knowledge";
-import type { Grader } from "@/lib/ingredients/grade";
-import type { IngredientInfo, ResolvedIngredient } from "@/lib/ingredients/types";
+import type { Grader, ConcernGrader } from "@/lib/ingredients/grade";
+import type { CustomConcern, IngredientInfo, ResolvedIngredient } from "@/lib/ingredients/types";
 import { ConcernSchema, type Concern, type HelpStrength, type IngredientGrade } from "@/lib/types";
 
 /**
@@ -49,7 +49,7 @@ function bridgeToInfo(raw: string, grade: IngredientGrade): IngredientInfo {
  */
 export async function resolveIngredients(
   names: string[],
-  opts: { grader?: Grader } = {},
+  opts: { grader?: Grader; concernGrader?: ConcernGrader; customConcerns?: CustomConcern[] } = {},
 ): Promise<ResolvedIngredient[]> {
   const grades = await resolveGrades(names, opts);
 

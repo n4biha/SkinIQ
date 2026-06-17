@@ -17,10 +17,12 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { z } from "zod";
 import {
   ConcernSchema,
+  ConcernGradeSchema,
   IngredientGradeAISchema,
   LabelReadingSchema,
   FrontReadingSchema,
   ReportCopySchema,
+  type ConcernGrade,
   type IngredientGradeAI,
   type LabelReading,
   type FrontReading,
@@ -398,7 +400,9 @@ const GRADE_ENUM = [
   "helps-moderate",
   "helps-slight",
   "neutral",
-  "aggravates",
+  "aggravates-slight",
+  "aggravates-moderate",
+  "aggravates-strong",
 ];
 
 const GRADE_SCHEMA = {
@@ -469,14 +473,19 @@ export async function gradeIngredients(
     "You are a rigorous, objective cosmetic chemist. Grade each ingredient below " +
     `against these skin concerns: ${ConcernSchema.options.join(", ")}.\n` +
     "For EACH concern return exactly one of: helps-strong, helps-moderate, " +
-    "helps-slight, neutral, aggravates.\n" +
-    "- 'neutral' is the DEFAULT — the ingredient simply doesn't affect that concern. " +
-    "Most cells are neutral, and neutral is NOT bad.\n" +
-    "- Use 'aggravates' ONLY when there is a real mechanism (comedogenic → acne; " +
-    "irritant/sensitizer → sensitivity and redness; stripping/drying → dryness). " +
-    "When unsure, use neutral — never invent an aggravation.\n" +
-    "- Use 'helps-*' only when the ingredient genuinely benefits that concern " +
-    "(strong = well-evidenced primary benefit; slight = minor/supportive).\n" +
+    "helps-slight, neutral, aggravates-slight, aggravates-moderate, aggravates-strong.\n" +
+    "- 'neutral' is the DEFAULT and CENTER — the ingredient simply doesn't affect that " +
+    "concern. Most cells are neutral, and neutral is NOT bad.\n" +
+    "- 'helps-*' only when the ingredient genuinely benefits that concern " +
+    "(strong = well-evidenced primary benefit; moderate = solid secondary; slight = minor/supportive).\n" +
+    "- 'aggravates-*' only when there is a REAL mechanism that worsens the concern, and " +
+    "match the LEVEL to how potent it genuinely is: aggravates-strong = substantial " +
+    "(e.g. high denatured alcohol → dryness; a potent stripping/sensitizing agent); " +
+    "aggravates-moderate = a notable astringent/irritant; aggravates-slight = mild/low-level. " +
+    "When unsure, use neutral — never invent or inflate harm.\n" +
+    "- Judge the INGREDIENT, not its name: denatured alcohol (Alcohol Denat.) is strongly " +
+    "drying, but an emollient FATTY alcohol (cetearyl/cetyl/stearyl alcohol) is NOT drying " +
+    "and must stay neutral for dryness.\n" +
     "Also grade irritation (none/low/medium/high), comedogenic (0–5), fragrance " +
     "(boolean), and your confidence (high/medium/low). Where CosIng functions are " +
     "given, use them as factual reference about the ingredient.\n\n" +
@@ -513,4 +522,106 @@ export async function gradeIngredients(
   }
 
   return GradeResponseSchema.parse(parsed).items;
+}
+
+/* ------------------------------------------------------------------ */
+/* Custom-concern grading (free-text concerns, e.g. "texture")         */
+/* ------------------------------------------------------------------ */
+
+// The canonical GRADE_SCHEMA above is enum-locked to the 8 concerns, so it can't
+// grade a free-text concern. This is a SEPARATE, string-keyed path: judge each
+// ingredient against ONE concern entered by the user, returning the same bounded
+// three-state bucket. Canonical grading is left untouched (it's calibration-backed).
+const CONCERN_GRADE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    items: {
+      type: Type.ARRAY,
+      description: "One grade per input ingredient, in the same order.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: "The ingredient name, echoed back." },
+          grade: {
+            type: Type.STRING,
+            format: "enum",
+            enum: GRADE_ENUM,
+            description: "This ingredient's three-state grade for the given concern.",
+          },
+        },
+        required: ["name", "grade"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+const ConcernGradeResponseSchema = z.object({
+  items: z.array(z.object({ name: z.string(), grade: ConcernGradeSchema })),
+});
+
+/**
+ * Grade ingredients against ONE free-text concern (as entered — not mapped to a
+ * canonical concern). Returns one three-state bucket per ingredient. Same rigor as
+ * the canonical grader: default neutral, helps-* / aggravates only with a real
+ * mechanism, vague/unjudgeable → neutral. Temp 0 + batched; CosIng functions are
+ * passed as grounding. The knowledge base caches each result by (ingredient, concern).
+ */
+export async function gradeConcern(
+  items: { name: string; cosingFunctions: string[] }[],
+  concernLabel: string,
+): Promise<{ name: string; grade: ConcernGrade }[]> {
+  if (items.length === 0) return [];
+  const ai = getClient();
+
+  const prompt =
+    "You are a rigorous, objective cosmetic chemist. Grade each ingredient below " +
+    `against ONE skincare concern: "${concernLabel}".\n` +
+    "Return exactly one of: helps-strong, helps-moderate, helps-slight, neutral, " +
+    "aggravates-slight, aggravates-moderate, aggravates-strong.\n" +
+    "- 'neutral' is the DEFAULT and CENTER — the ingredient simply doesn't affect this " +
+    "concern. neutral is NOT bad.\n" +
+    "- 'helps-*' only when the ingredient genuinely benefits this concern " +
+    "(strong = well-evidenced primary benefit; slight = minor/supportive).\n" +
+    "- 'aggravates-*' only when there is a REAL mechanism that worsens this concern, with " +
+    "the LEVEL matching potency (strong = substantial, moderate = notable, slight = mild). " +
+    "When unsure, use neutral — never invent or inflate harm.\n" +
+    "- Judge the INGREDIENT, not its name (denatured alcohol is drying; an emollient fatty " +
+    "alcohol like cetearyl is not).\n" +
+    "- If the concern is vague or you cannot meaningfully judge an ingredient against " +
+    "it, use neutral.\n" +
+    "Where CosIng functions are given, use them as factual reference.\n\n" +
+    "Ingredients:\n" +
+    items
+      .map((it) =>
+        it.cosingFunctions.length
+          ? `- ${it.name} (CosIng functions: ${it.cosingFunctions.join(", ")})`
+          : `- ${it.name}`,
+      )
+      .join("\n");
+
+  const text = await withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseSchema: CONCERN_GRADE_SCHEMA,
+        thinkingConfig: THINKING_OFF,
+        maxOutputTokens: 8192,
+      },
+    });
+    if (!response.text) throw new TransientError("gradeConcern: empty response");
+    return response.text;
+  }, "gradeConcern");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Gemini returned malformed JSON for concern grading.");
+  }
+
+  return ConcernGradeResponseSchema.parse(parsed).items;
 }

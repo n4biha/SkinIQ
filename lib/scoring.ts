@@ -12,8 +12,14 @@
  * (and any concern an ingredient simply doesn't address) is NEVER penalized — a
  * product that does nothing for your concerns sits at the neutral baseline, it isn't
  * dragged down. Contributions are weighted by ingredient POSITION (top of the label =
- * more concentrated = more impact) and the grader's CONFIDENCE. The constants below
- * are FITTED to the calibration set (test/calibration.ts).
+ * more concentrated = more impact) and the grader's CONFIDENCE. The canonical
+ * constants are FITTED to the calibration set (test/calibration.ts).
+ *
+ * CUSTOM CONCERNS: a free-text concern (e.g. "texture") is AI-judged per ingredient
+ * exactly like a canonical one and flows through the SAME three-state math — but its
+ * contribution is weighted DOWN (`CUSTOM_CONFIDENCE`) because it's unvetted (no
+ * calibration case, no curated override behind it). An all-neutral custom concern
+ * contributes zero and is never a penalty.
  */
 
 import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
@@ -28,7 +34,7 @@ import type {
   SkinProfile,
   Verdict,
 } from "@/lib/types";
-import type { ResolvedIngredient } from "@/lib/ingredients/types";
+import type { CustomConcern, ResolvedIngredient } from "@/lib/ingredients/types";
 
 /* ------------------------------------------------------------------ */
 /* Canonical concern model                                             */
@@ -83,6 +89,25 @@ function selectedConcerns(profile: SkinProfile): Concern[] {
 }
 
 /**
+ * The user's CUSTOM (non-canonical) concerns: free-text entries that don't map to a
+ * canonical concern. Deduped by normalized key; the label is kept as entered (for the
+ * grading prompt + report). Exported so the route can request grades for them before
+ * the synchronous scoreProduct runs.
+ */
+export function extractCustomConcerns(profile: SkinProfile): CustomConcern[] {
+  const seen = new Set<string>();
+  const out: CustomConcern[] = [];
+  for (const raw of profile.concerns) {
+    if (normalizeConcern(raw)) continue; // canonical → handled by selectedConcerns
+    const key = normalizeConcernKey(raw);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label: raw.trim() });
+  }
+  return out;
+}
+
+/**
  * Concerns to DISPLAY as bars: the user's selections plus skin-type-implied ones,
  * so the bars stay meaningful. (Scoring rewards only the explicit selections.)
  */
@@ -121,7 +146,24 @@ const HELP_REWARD: Record<ConcernGrade, number> = {
   "helps-moderate": 1.0,
   "helps-slight": 0.6,
   neutral: 0,
-  aggravates: 0,
+  "aggravates-slight": 0,
+  "aggravates-moderate": 0,
+  "aggravates-strong": 0,
+};
+
+/**
+ * Penalty magnitude per aggravates LEVEL — mirrors HELP_REWARD so harm and help are
+ * symmetric (a strong aggravator hurts as much as a strong helper helps, before any
+ * position/confidence weighting). neutral / helps-* contribute no penalty.
+ */
+const AGGRAVATE_PENALTY: Record<ConcernGrade, number> = {
+  "aggravates-strong": 1.9,
+  "aggravates-moderate": 1.0,
+  "aggravates-slight": 0.6,
+  neutral: 0,
+  "helps-strong": 0,
+  "helps-moderate": 0,
+  "helps-slight": 0,
 };
 
 /**
@@ -135,11 +177,16 @@ const DEPTH_WEIGHT = 0.45;
  * Floor for a concern addressed by a MODERATE active: a single moderate helper deep
  * in the list still counts as meaningfully addressing the concern (a strong helper is
  * already rewarded enough on its own; this only lifts the otherwise-thin moderate case).
+ * Canonical concerns only — custom concerns are unvetted and never floored up.
  */
 const ADDRESSED_FLOOR = 1.3;
 
-/** Penalty magnitude when an ingredient actively works AGAINST a relevant concern. */
-const AGGRAVATE_PENALTY = 1.3;
+/**
+ * Custom-concern weight: an unvetted, AI-judged free-text concern moves the score
+ * less than a calibration-backed canonical one. Multiplies both its reward and its
+ * penalty. (A custom helps-strong therefore counts less than a canonical helps-strong.)
+ */
+const CUSTOM_CONFIDENCE = 0.6;
 
 /** Position model: top of the label = most concentrated. Drops off quadratically so
  *  actives below the ~1% line (deep in the list) contribute little. */
@@ -156,7 +203,16 @@ const CONFIDENCE_WEIGHT: Record<ConfidenceLevel, number> = {
 };
 
 const ALLERGY_PENALTY = 4.0;
-const FRAGRANCE_PENALTY = { sensitive: 2.0, default: 0.5 };
+
+/**
+ * Conflict penalty: a "split" product that BOTH meaningfully helps AND meaningfully harms the user's
+ * SELECTED concerns is worse than one that does nothing. EXTRA penalty (on top of the direct aggravates
+ * harm) = CONFLICT_FACTOR × min(bestHelp, worstHarm) — the `min` requires both forces to be real, and
+ * the harm side (worstHarm) carries the severity, so a strong dryness conflict bites and a slight one
+ * barely registers. Does NOT touch aggravates-strong (so the fragrance cases stay put).
+ */
+const CONFLICT_FACTOR = 0.4;
+
 /** Cumulative comedogenic penalty (acne-prone only), per ingredient, position-weighted. */
 const COMEDOGENIC_PENALTY = { high: 0.9, moderate: 0.45 }; // com >= 4 vs com 2–3
 
@@ -185,9 +241,10 @@ type GradedIngredient = {
   isAllergyHit: boolean;
 };
 
-/** The three-state grade an ingredient holds for a concern (or `neutral` if absent). */
-function gradeFor(g: GradedIngredient, concern: Concern): ConcernGrade {
-  return g.grade?.concerns[normalizeConcernKey(concern)] ?? "neutral";
+/** The three-state grade an ingredient holds for a concern KEY (or `neutral` if absent).
+ *  The key is already normalized (canonical keys + custom keys are both raw cell keys). */
+function gradeForKey(g: GradedIngredient, key: string): ConcernGrade {
+  return g.grade?.concerns[key] ?? "neutral";
 }
 
 const HELP_RANK: Record<ConcernGrade, number> = {
@@ -195,25 +252,54 @@ const HELP_RANK: Record<ConcernGrade, number> = {
   "helps-moderate": 2,
   "helps-slight": 1,
   neutral: 0,
-  aggravates: 0,
+  "aggravates-slight": 0,
+  "aggravates-moderate": 0,
+  "aggravates-strong": 0,
 };
 
-/** Strongest help grade any ingredient offers for a concern (null if none help). */
-function bestHelpGrade(graded: GradedIngredient[], concern: Concern): ConcernGrade | null {
+/** Harm severity rank, mirroring HELP_RANK — used to gate the conflict penalty. */
+const AGG_RANK: Record<ConcernGrade, number> = {
+  "aggravates-strong": 3,
+  "aggravates-moderate": 2,
+  "aggravates-slight": 1,
+  neutral: 0,
+  "helps-strong": 0,
+  "helps-moderate": 0,
+  "helps-slight": 0,
+};
+
+/** True for any graded harm level (the three-state `aggravates-*` bucket). */
+function isAggravates(grade: ConcernGrade): boolean {
+  return (
+    grade === "aggravates-slight" ||
+    grade === "aggravates-moderate" ||
+    grade === "aggravates-strong"
+  );
+}
+
+/** Strongest help grade any ingredient offers for a concern key (null if none help). */
+function bestHelpGrade(graded: GradedIngredient[], key: string): ConcernGrade | null {
   let best: ConcernGrade | null = null;
   for (const g of graded) {
-    const cell = gradeFor(g, concern);
+    const cell = gradeForKey(g, key);
     if (HELP_RANK[cell] > 0 && (best === null || HELP_RANK[cell] > HELP_RANK[best])) best = cell;
   }
   return best;
 }
 
-/** Reward for a selected concern: weighted primary helper + diminished depth bonus,
- *  floored when a moderate+ active addresses it. */
-function concernReward(graded: GradedIngredient[], concern: Concern): number {
+/** Reward for a scored concern: weighted primary helper + diminished depth bonus.
+ *  Canonical single-moderate concerns get the ADDRESSED_FLOOR — but ONLY when the
+ *  product has no stronger help to offer this user (`floorEligible`); custom concerns
+ *  are weighted down by CUSTOM_CONFIDENCE and never floored. */
+function concernReward(
+  graded: GradedIngredient[],
+  key: string,
+  canonical: boolean,
+  floorEligible: boolean,
+): number {
   const contributions: number[] = [];
   for (const g of graded) {
-    const value = HELP_REWARD[gradeFor(g, concern)];
+    const value = HELP_REWARD[gradeForKey(g, key)];
     if (value > 0) contributions.push(value * g.posWeight * g.confWeight);
   }
   if (contributions.length === 0) return 0;
@@ -221,21 +307,26 @@ function concernReward(graded: GradedIngredient[], concern: Concern): number {
   const primary = contributions[0];
   const depth = contributions.slice(1).reduce((sum, v) => sum + v, 0) * DEPTH_WEIGHT;
   let reward = primary + depth;
-  // Only lift the thin single-moderate case; a strong helper deep in the list stays
-  // position-discounted (that's the whole point of the SA-high/SA-low pair).
-  if (bestHelpGrade(graded, concern) === "helps-moderate") reward = Math.max(reward, ADDRESSED_FLOOR);
-  return reward;
+  // Lift only the THIN case: a single moderate help that is the product's best
+  // contribution for this user. If the product already does something strong on a
+  // scored concern (`!floorEligible`), a secondary/buried moderate is NOT floored up
+  // (that's what was over-scoring Glycolic's pores and the buried-niacinamide acne);
+  // and custom concerns (unvetted) are never floored.
+  if (canonical && floorEligible && bestHelpGrade(graded, key) === "helps-moderate") {
+    reward = Math.max(reward, ADDRESSED_FLOOR);
+  }
+  return canonical ? reward : reward * CUSTOM_CONFIDENCE;
 }
 
-/** Penalty for a concern an ingredient actively aggravates (worst weighted offender). */
-function aggravatePenalty(graded: GradedIngredient[], concern: Concern): number {
+/** Penalty for a concern an ingredient aggravates: worst weighted offender, scaled by
+ *  its graded severity (aggravates-strong/moderate/slight), position and confidence. */
+function aggravatePenalty(graded: GradedIngredient[], key: string, canonical: boolean): number {
   let worst = 0;
   for (const g of graded) {
-    if (gradeFor(g, concern) === "aggravates") {
-      worst = Math.max(worst, AGGRAVATE_PENALTY * g.posWeight * g.confWeight);
-    }
+    const magnitude = AGGRAVATE_PENALTY[gradeForKey(g, key)];
+    if (magnitude > 0) worst = Math.max(worst, magnitude * g.posWeight * g.confWeight);
   }
-  return worst;
+  return canonical ? worst : worst * CUSTOM_CONFIDENCE;
 }
 
 function irritationPenalty(risk: IrritationRisk, sensitive: boolean): number {
@@ -275,10 +366,13 @@ export function scoreProduct(
 ): ScoringResult {
   const allergies = profile.allergies ?? [];
   const selected = selectedConcerns(profile);
+  const custom = extractCustomConcerns(profile);
   const display = displayConcerns(profile);
-  // Score against explicit selections; fall back to the display set if none.
-  const scoredConcerns = selected.length ? selected : display;
-  const selectedSet = new Set(scoredConcerns);
+  // Score explicit canonical selections; fall back to the display set ONLY when the
+  // user picked nothing scorable at all (no canonical AND no custom concern). A user
+  // whose only concern is custom is scored against THAT concern, not the default set.
+  const canonicalScored = selected.length || custom.length ? selected : display;
+  const selectedSet = new Set(canonicalScored);
 
   const sensitiveSkin =
     profile.sensitive ||
@@ -313,25 +407,76 @@ export function scoreProduct(
   const hasFragrance = safe.some((g) => g.grade?.fragrance);
   const allergyHits = graded.filter((g) => g.isAllergyHit).length;
 
+  // The concerns we actually score against (canonical selections + custom picks), each
+  // with its cache key and whether it's canonical (custom harm/help is weighted down).
+  const scoredConcernList: { key: string; canonical: boolean }[] = [
+    ...canonicalScored.map((c) => ({ key: normalizeConcernKey(c), canonical: true })),
+    ...custom.map((c) => ({ key: c.key, canonical: false })),
+  ];
+  const scoredKeys = scoredConcernList.map((s) => s.key);
+  // `hasStrongHelp` gates the moderate ADDRESSED_FLOOR: a product that already does
+  // something strong for this user doesn't get its secondary/buried moderates floored up.
+  const hasStrongHelp = scoredKeys.some((k) => bestHelpGrade(graded, k) === "helps-strong");
+  const floorEligible = !hasStrongHelp;
+
   /* ---- Overall score (0–10) ---- */
   let score = BASELINE;
 
   // Reward helps-* for selected concerns; penalize aggravates. Neutral / unaddressed
   // concerns are NOT penalized — silence is not a negative.
-  for (const concern of scoredConcerns) {
-    score += concernReward(graded, concern);
-    score -= aggravatePenalty(graded, concern);
+  for (const concern of canonicalScored) {
+    const key = normalizeConcernKey(concern);
+    score += concernReward(graded, key, true, floorEligible);
+    score -= aggravatePenalty(graded, key, true);
+  }
+  // Custom concerns: same three-state math, AI-judged, weighted lower-confidence.
+  for (const c of custom) {
+    score += concernReward(graded, c.key, false, floorEligible);
+    score -= aggravatePenalty(graded, c.key, false);
   }
   // Trait-based: a sensitive user is harmed by anything that aggravates sensitivity
-  // or redness, even when they didn't list it as a concern.
+  // or redness, even when they didn't list it as a concern. Charged ONCE (the worst of
+  // the two) — sensitivity and redness are one reactive-skin dimension, so an ingredient
+  // graded `aggravates` on both (e.g. a fragrance allergen) isn't double-penalized.
   if (profile.sensitive) {
+    let traitHarm = 0;
     for (const concern of ["sensitivity", "redness"] as Concern[]) {
-      if (!selectedSet.has(concern)) score -= aggravatePenalty(graded, concern);
+      if (!selectedSet.has(concern)) {
+        traitHarm = Math.max(traitHarm, aggravatePenalty(graded, normalizeConcernKey(concern), true));
+      }
     }
+    score -= traitHarm;
   }
 
+  // Conflict penalty: a "split" product that BOTH meaningfully helps one selected concern AND
+  // meaningfully aggravates another is worse than one that does nothing. Fires only when a selected
+  // concern is helped (>= moderate) AND another is harmed (>= moderate) — `aggravates-slight` is below
+  // threshold and triggers nothing. Magnitude = CONFLICT_FACTOR × min(helpMag, harmMag): the `min`
+  // means both forces must be real, and the position/confidence/severity-weighted `harmMag` makes a
+  // strong conflict bite while a mild one barely moves. Additive to the direct aggravates penalty.
+  let helpMag = 0;
+  let harmMag = 0;
+  let helpsMeaningfully = false;
+  let harmsMeaningfully = false;
+  for (const { key, canonical } of scoredConcernList) {
+    const best = bestHelpGrade(graded, key);
+    if (best !== null && HELP_RANK[best] >= HELP_RANK["helps-moderate"]) helpsMeaningfully = true;
+    const customScale = canonical ? 1 : CUSTOM_CONFIDENCE;
+    for (const g of graded) {
+      const cell = gradeForKey(g, key);
+      helpMag = Math.max(helpMag, HELP_REWARD[cell] * g.posWeight * g.confWeight * customScale);
+      if (AGG_RANK[cell] >= AGG_RANK["aggravates-moderate"]) harmsMeaningfully = true;
+    }
+    harmMag = Math.max(harmMag, aggravatePenalty(graded, key, canonical));
+  }
+  if (helpsMeaningfully && harmsMeaningfully) {
+    score -= CONFLICT_FACTOR * Math.min(helpMag, harmMag);
+  }
+
+  // Fragrance is an informational boolean tag — its HARM flows through the graded
+  // irritation level + aggravates-* cells (so a harsh sensitizer hurts a lot, a mild
+  // aroma barely). No flat boolean penalty (it can't distinguish severity).
   score -= irritationPenalty(worstIrritation, sensitiveSkin);
-  if (hasFragrance) score -= sensitiveSkin ? FRAGRANCE_PENALTY.sensitive : FRAGRANCE_PENALTY.default;
   if (acneProne) {
     for (const g of safe) {
       const com = g.grade?.comedogenic ?? 0;
@@ -344,10 +489,12 @@ export function scoreProduct(
   score = Math.round(clamp(score, 0, 10) * 10) / 10;
   const verdict = verdictFor(score);
 
-  /* ---- Per-concern percentages (display set) ---- */
+  /* ---- Per-concern percentages ---- */
+  // Canonical display bars.
   const concernScores: ConcernScore[] = display.map((concern) => {
+    const key = normalizeConcernKey(concern);
     let percent = 30;
-    const best = bestHelpGrade(graded, concern);
+    const best = bestHelpGrade(graded, key);
     if (best === "helps-strong") percent += 35;
     else if (best === "helps-moderate") percent += 20;
     else if (best === "helps-slight") percent += 10;
@@ -358,20 +505,37 @@ export function scoreProduct(
     ) {
       percent -= 20;
     }
-    if (aggravatePenalty(graded, concern) > 0) percent -= 20;
+    if (aggravatePenalty(graded, key, true) > 0) percent -= 20;
     if (allergyHits > 0) percent -= 25;
 
     return { label: CONCERN_LABELS[concern], percent: Math.round(clamp(percent, 5, 95)) };
   });
+  // Custom concern bars — marked AI-assessed; all-neutral ones are "tracked, not scored".
+  for (const c of custom) {
+    const best = bestHelpGrade(graded, c.key);
+    const aggravated = graded.some((g) => isAggravates(gradeForKey(g, c.key)));
+    const addressed = best !== null || aggravated;
+    let percent = 30;
+    if (best === "helps-strong") percent += 35;
+    else if (best === "helps-moderate") percent += 20;
+    else if (best === "helps-slight") percent += 10;
+    if (aggravated) percent -= 20;
+    concernScores.push({
+      label: c.label,
+      percent: Math.round(clamp(percent, 5, 95)),
+      aiAssessed: true,
+      scored: addressed,
+    });
+  }
 
   /* ---- Per-ingredient notes + flags ---- */
   const ingredients: IngredientNote[] = graded.map((g) => {
     const info = g.info;
-    const benefitsUser = scoredConcerns.some((c) => HELP_RANK[gradeFor(g, c)] > 0);
+    const benefitsUser = scoredKeys.some((k) => HELP_RANK[gradeForKey(g, k)] > 0);
     const aggravatesUser =
-      scoredConcerns.some((c) => gradeFor(g, c) === "aggravates") ||
+      scoredKeys.some((k) => isAggravates(gradeForKey(g, k))) ||
       (profile.sensitive &&
-        (gradeFor(g, "sensitivity") === "aggravates" || gradeFor(g, "redness") === "aggravates"));
+        (isAggravates(gradeForKey(g, "sensitivity")) || isAggravates(gradeForKey(g, "redness"))));
     const isCaution =
       !!g.grade &&
       (aggravatesUser ||

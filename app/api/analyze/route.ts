@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readLabel, readProductFront, writeReportCopy } from "@/lib/gemini";
-import { scoreProduct, type ScoringResult } from "@/lib/scoring";
+import { scoreProduct, extractCustomConcerns, type ScoringResult } from "@/lib/scoring";
 import { resolveIngredients } from "@/lib/ingredients/resolve";
 import { gateLabel } from "@/lib/label-gate";
 import { gateFront } from "@/lib/front-gate";
@@ -201,7 +201,9 @@ export async function POST(req: Request) {
 
   // 3) Resolve each ingredient (tiers 1→2→3), then score deterministically.
   //    Resolution may call the model; scoring never does — numbers are authoritative.
-  const resolved = await resolveIngredients(label.ingredients);
+  // Custom (non-canonical) concerns get AI-judged per ingredient before scoring.
+  const customConcerns = extractCustomConcerns(profile);
+  const resolved = await resolveIngredients(label.ingredients, { customConcerns });
   const scored = scoreProduct(profile, resolved);
 
   // 4) Write the prose (Gemini), falling back to deterministic copy on failure.

@@ -29,6 +29,13 @@ export type IngredientInfo = {
 /** Which tier answered, for logging/provenance. null = nothing matched. */
 export type Tier = 1 | 2 | 3 | null;
 
+/**
+ * A free-text (non-canonical) skin concern, e.g. "texture". `key` is the stable,
+ * normalized cache/grade-cell key; `label` is the concern as the user entered it
+ * (used for the AI grading prompt + the report's concern label).
+ */
+export type CustomConcern = { key: string; label: string };
+
 /** One ingredient after running through the resolver. */
 export type ResolvedIngredient = {
   raw: string;

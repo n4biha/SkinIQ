@@ -86,17 +86,20 @@ export const IngredientAssessmentSchema = z.object({
 /* ---- Knowledge-base grade (three-state, AI-graded + cached) ---- */
 
 /**
- * Per (ingredient, concern) grade. THREE-STATE, and the distinction is the whole
- * point: `neutral` = doesn't address the concern but does NOT harm it (the default
- * for most pairings; NEVER penalized — silence ≠ bad). `aggravates` = actively
- * works against the concern (penalized). Only `helps-*` is rewarded.
+ * Per (ingredient, concern) grade. The harm scale MIRRORS the help scale —
+ * `neutral` is the center (no reward, no penalty; the default for most pairings,
+ * NEVER penalized — silence ≠ bad). `helps-*` is rewarded by severity; `aggravates-*`
+ * is penalized by severity (e.g. strongly-drying alcohol → `aggravates-strong` for
+ * dryness, a mild astringent → `aggravates-slight`). Symmetric, three levels each side.
  */
 export const ConcernGradeSchema = z.enum([
   "helps-strong",
   "helps-moderate",
   "helps-slight",
   "neutral",
-  "aggravates",
+  "aggravates-slight",
+  "aggravates-moderate",
+  "aggravates-strong",
 ]);
 
 /** How sure the grader is about an ingredient's grade. */
@@ -146,6 +149,12 @@ export const IngredientNoteSchema = z.object({
 export const ConcernScoreSchema = z.object({
   label: z.string(),
   percent: z.number().min(0).max(100),
+  // Custom (free-text, AI-judged) concerns are marked for honest UI: `aiAssessed`
+  // flags a softer, non-calibrated judgment; `scored: false` means it came back
+  // all-neutral ("tracked, not scored" — it did NOT move the number). Optional so
+  // reports persisted before this feature still parse.
+  aiAssessed: z.boolean().optional(),
+  scored: z.boolean().optional(),
 });
 
 /* ---- What Gemini returns when it reads a label (wired in B5) ---- */

@@ -35,4 +35,15 @@ describe("normalizeConcernKey", () => {
     expect(normalizeConcernKey("Fine-Lines!")).toBe("fine lines");
     expect(normalizeConcernKey("Acne")).toBe("acne");
   });
+
+  it("collapses case/punctuation/whitespace variants of a custom concern to one key", () => {
+    expect(normalizeConcernKey("Texture")).toBe("texture");
+    expect(normalizeConcernKey("  texture ")).toBe("texture");
+    expect(normalizeConcernKey("texture!")).toBe("texture");
+  });
+
+  it("does NOT do semantic matching — 'skin texture' stays distinct from 'texture'", () => {
+    expect(normalizeConcernKey("skin texture")).toBe("skin texture");
+    expect(normalizeConcernKey("skin texture")).not.toBe(normalizeConcernKey("texture"));
+  });
 });

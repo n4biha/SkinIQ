@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { resolveGrades, concernContribution } from "@/lib/ingredients/knowledge";
-import { groundedItems, type Grader } from "@/lib/ingredients/grade";
+import { groundedItems, type Grader, type ConcernGrader } from "@/lib/ingredients/grade";
 import { CURRENT_GRADE_VERSION } from "@/lib/ingredients/version";
 import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
-import type { IngredientGrade } from "@/lib/types";
+import type { ConcernGrade, IngredientGrade } from "@/lib/types";
 
 /* The knowledge base uses a process-global store, so tests use UNIQUE made-up
  * ingredient names to avoid cross-test cache collisions. */
@@ -38,12 +38,30 @@ function fakeGrader(
   };
 }
 
+/** A deterministic fake custom-concern grader; `counter.n` tracks invocations. */
+function fakeConcernGrader(
+  grades: Record<string, ConcernGrade>,
+  counter?: { n: number },
+): ConcernGrader {
+  return async (names) => {
+    if (counter) counter.n += 1;
+    const out = new Map<string, ConcernGrade>();
+    for (const name of names) {
+      const key = normalizeName(name);
+      out.set(key, grades[key] ?? "neutral");
+    }
+    return out;
+  };
+}
+
 describe("concernContribution (three-state)", () => {
   it("neutral → no reward and no penalty", () => {
     expect(concernContribution("neutral")).toBe("none");
   });
-  it("aggravates → penalty", () => {
-    expect(concernContribution("aggravates")).toBe("penalty");
+  it("aggravates-* → penalty (every severity)", () => {
+    expect(concernContribution("aggravates-slight")).toBe("penalty");
+    expect(concernContribution("aggravates-moderate")).toBe("penalty");
+    expect(concernContribution("aggravates-strong")).toBe("penalty");
   });
   it("helps-* → reward", () => {
     expect(concernContribution("helps-strong")).toBe("reward");
@@ -88,7 +106,7 @@ describe("knowledge base", () => {
 
     // Pinned safety fields come from the override...
     expect(g.fragrance).toBe(true);
-    expect(g.concerns[normalizeConcernKey("sensitivity")]).toBe("aggravates");
+    expect(g.concerns[normalizeConcernKey("sensitivity")]).toBe("aggravates-moderate");
     // ...but the unpinned benefit cell still comes from the AI grade.
     expect(g.concerns[normalizeConcernKey("acne")]).toBe("helps-moderate");
   });
@@ -104,6 +122,38 @@ describe("knowledge base", () => {
     const g = (await resolveGrades(["Plainium"], { grader })).get("plainium")!;
     expect(g.fragrance).toBe(false);
     expect(g.concerns[normalizeConcernKey("acne")]).toBe("helps-slight");
+  });
+});
+
+describe("custom (non-canonical) concerns", () => {
+  it("AI-judges a custom concern into the (ingredient, concern) cell", async () => {
+    const grader = fakeGrader({ texturium: makeGrade({ concerns: { acne: "neutral" } }) });
+    const concernGrader = fakeConcernGrader({ texturium: "helps-moderate" });
+    const key = normalizeConcernKey("texture");
+
+    const g = (
+      await resolveGrades(["Texturium"], {
+        grader,
+        concernGrader,
+        customConcerns: [{ key, label: "texture" }],
+      })
+    ).get("texturium")!;
+
+    expect(g.concerns[key]).toBe("helps-moderate");
+  });
+
+  it("caches a custom-concern grade — a later resolve doesn't re-call the concern grader", async () => {
+    const grader = fakeGrader({ cacheium: makeGrade() });
+    const counter = { n: 0 };
+    const concernGrader = fakeConcernGrader({ cacheium: "helps-strong" }, counter);
+    const key = normalizeConcernKey("texture");
+    const opts = { grader, concernGrader, customConcerns: [{ key, label: "texture" }] };
+
+    await resolveGrades(["Cacheium"], opts);
+    const second = await resolveGrades(["Cacheium"], opts);
+
+    expect(counter.n).toBe(1); // cell cached after the first pass → no second model call
+    expect(second.get("cacheium")!.concerns[key]).toBe("helps-strong");
   });
 });
 

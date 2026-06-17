@@ -11,12 +11,21 @@
 
 import { normalizeName, normalizeConcernKey } from "@/lib/ingredients/normalize";
 import { cosingFunctions } from "@/lib/ingredients/cosing";
-import { gradeIngredients, GRADE_MODEL } from "@/lib/gemini";
+import { gradeIngredients, gradeConcern, GRADE_MODEL } from "@/lib/gemini";
 import { CURRENT_GRADE_VERSION } from "@/lib/ingredients/version";
 import type { ConcernGrade, IngredientGrade } from "@/lib/types";
 
 /** Grade a batch of raw ingredient names → map keyed by normalizeName. */
 export type Grader = (names: string[]) => Promise<Map<string, IngredientGrade>>;
+
+/**
+ * Grade a batch of ingredients against ONE free-text concern → map of
+ * normalizeName → three-state grade. Injectable (tests pass a deterministic fake).
+ */
+export type ConcernGrader = (
+  names: string[],
+  concernLabel: string,
+) => Promise<Map<string, ConcernGrade>>;
 
 /**
  * Pair each ingredient with its CosIng function list — the grounding EVIDENCE fed
@@ -54,5 +63,15 @@ export const aiGrader: Grader = async (names) => {
       gradedAt,
     });
   }
+  return out;
+};
+
+/** The default custom-concern grader: CosIng-grounded AI judgment of one free-text
+ *  concern, keyed by normalized ingredient name. */
+export const aiConcernGrader: ConcernGrader = async (names, concernLabel) => {
+  const out = new Map<string, ConcernGrade>();
+  if (names.length === 0) return out;
+  const graded = await gradeConcern(groundedItems(names), concernLabel);
+  for (const g of graded) out.set(normalizeName(g.name), g.grade);
   return out;
 };

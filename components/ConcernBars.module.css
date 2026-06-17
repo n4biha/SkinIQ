@@ -21,6 +21,18 @@
   font-weight: 500;
 }
 
+/* Marks a custom, AI-judged concern as a softer (non-calibrated) judgment. */
+.aiTag {
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .percent {
   color: var(--green-dark);
   font-weight: 600;

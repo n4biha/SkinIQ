@@ -1,28 +1,3 @@
-/**
- * CALIBRATION SET — the anchor for the compatibility-estimate scoring system.
- *
- * Each case is a (profile + product ingredients) pairing plus the compatibility
- * score YOU judge correct (0–10) and a one-line rationale. In Step 3 the
- * deterministic combiner (lib/scoring.ts) is tuned until every case lands within
- * its tolerance (±0.5 by default). That's how the scoring constants stop being
- * arbitrary — they're FITTED to these stated judgments.
- *
- * This is a "compatibility estimate" (how well a product's ingredients fit THIS
- * user), never an accuracy/quality claim.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * HOW TO ADD YOUR OWN CASE: copy a `buildCase({ ... })` block, change the
- * product/profile/ingredients/expected/rationale, done. List ingredients in
- * LABEL ORDER (index 0 = top of the label = most concentrated); Step 4 uses that
- * order to weight prominence.
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * NOTE (temporary types): the `CalIngredient` grade shape below is defined
- * LOCALLY so this file compiles on its own before Step 2 lands. Step 2 replaces
- * it with the real richer `IngredientInfo` (adds "slight" to helps + a
- * `confidence` field) and Step 3/4 wire the combiner + position. When that
- * happens, this local shape goes away and cases map onto the real types.
- */
 
 import type { Concern, SkinProfile } from "@/lib/types";
 
@@ -37,6 +12,10 @@ export type CalIngredient = {
   name: string;
   /** Concerns this ingredient helps, graded. Omit concerns it doesn't help. */
   helps?: Partial<Record<Concern, CalHelpStrength>>;
+  /** Concerns this ingredient actively works AGAINST, graded by severity (e.g. drying
+   *  alcohol → { dryness: "strong" }). These become aggravates-{level} cells on the
+   *  grade, which the scoring engine penalizes by severity. */
+  aggravates?: Partial<Record<Concern, "slight" | "moderate" | "strong">>;
   irritation?: CalIrritation; // default "none"
   comedogenic?: number; // 0–5, default 0
   fragrance?: boolean; // default false
@@ -96,8 +75,8 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
     ingredients: [
       { name: "Aqua" },
       { name: "Shea Butter", helps: { dryness: "strong" }, comedogenic: 2, confidence: "high" },
-      { name: "Parfum", fragrance: true, irritation: "medium", confidence: "high" },
-      { name: "Limonene", fragrance: true, irritation: "medium", confidence: "high" },
+      { name: "Parfum", fragrance: true, irritation: "high", aggravates: { sensitivity: "strong", redness: "strong" }, confidence: "high" },
+      { name: "Limonene", fragrance: true, irritation: "high", aggravates: { sensitivity: "strong", redness: "strong" }, confidence: "high" },
     ],
     expected: 3,
     rationale: "Fragrance + sensitive skin = poor fit despite the emollients.",
@@ -250,7 +229,119 @@ export const CALIBRATION_CASES: CalibrationCase[] = [
     rationale: "Targets both concerns directly, fragrance-free, nothing irritating for sensitive skin.",
   }),
 
-  // TODO: add more of your own cases here (copy a buildCase({...}) block above).
+// ── TENSION: strong benefit AND a real penalty on the SAME product. Does help outweigh harm? ──
+  buildCase({
+    product: "Glycolic acid exfoliant — dark spots, but sensitive skin",
+    profile: profile({ skinType: "combination", sensitive: true, concerns: ["Dark spots", "Pores"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Glycolic Acid", helps: { "dark-spots": "strong", pores: "moderate" }, irritation: "high", confidence: "high" },
+      { name: "Glycerin", helps: { dryness: "moderate" }, confidence: "high" },
+    ],
+    expected: 5,
+    rationale: "Genuinely targets their dark spots (strong) BUT high irritation on sensitive skin — benefit and harm roughly cancel to a wash.",
+  }),
+
+  // ── TENSION: helps one picked concern, AGGRAVATES another picked concern ──
+  // NOTE: this oily+dry profile is an unusual/strained combination — a user who lists oiliness as a
+  // concern rarely also lists dryness — so the exact target is SOFT and shouldn't drive aggressive
+  // tuning. It exists to exercise the scaled conflict penalty (strong dryness harm + strong oiliness
+  // help → just below neutral). The conflict penalty lands it ~4.8.
+  buildCase({
+    product: "Clay + alcohol mattifier — oily but also dry patches",
+    profile: profile({ skinType: "combination", concerns: ["Oiliness", "Dryness"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Kaolin", helps: { oiliness: "strong" }, confidence: "high" },
+      { name: "Alcohol Denat.", helps: { oiliness: "moderate" }, aggravates: { dryness: "strong" }, irritation: "medium", confidence: "high" },
+      { name: "Silica", helps: { oiliness: "moderate" }, confidence: "medium" },
+    ],
+    expected: 4.8,
+    rationale: "Great for the oiliness half, but a strongly drying active works AGAINST their dryness concern — a split product nets just below neutral via the conflict penalty.",
+  }),
+
+  // ── TENSION: the right active is present but BURIED (position vs benefit) ──
+  buildCase({
+    product: "\"Niacinamide\" serum — but it's the last ingredient",
+    profile: profile({ skinType: "oily", concerns: ["Oiliness", "Acne"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Glycerin", helps: { dryness: "moderate" }, confidence: "high" },
+      { name: "Butylene Glycol", confidence: "medium" },
+      { name: "Phenoxyethanol", confidence: "high" },
+      { name: "Niacinamide", helps: { oiliness: "strong", acne: "moderate" }, confidence: "high" },
+    ],
+    expected: 6.0,
+    rationale: "Marketed on niacinamide but it's below the preservative — likely a token amount, so it only partly counts. (Scored ~6.0, same as the structurally-identical SA-low case: a strong active below the 1% line; the engine doesn't read the preservative position, so they land together.)",
+  }),
+
+  // ── TENSION: low-confidence grades on the key actives — how much should uncertainty cost? ──
+  buildCase({
+    product: "Botanical 'brightening' serum — speculative actives",
+    profile: profile({ skinType: "combination", concerns: ["Dark spots"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Licorice Root Extract", helps: { "dark-spots": "moderate" }, confidence: "low" },
+      { name: "Bearberry Extract", helps: { "dark-spots": "moderate" }, confidence: "low" },
+      { name: "Glycerin", helps: { dryness: "moderate" }, confidence: "high" },
+    ],
+    expected: 6,
+    rationale: "Targets the right concern, but the actives are low-confidence — should help, but uncertainty keeps it from scoring like a proven one.",
+  }),
+
+  // ── TENSION: allergen present but NOT in this user's allergy list — penalty or not? ──
+  buildCase({
+    product: "Effective serum with a fragrance allergen — user NOT allergic, not sensitive",
+    profile: profile({ skinType: "oily", concerns: ["Acne", "Oiliness"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Niacinamide", helps: { oiliness: "strong", acne: "moderate" }, confidence: "high" },
+      { name: "Linalool", fragrance: true, irritation: "medium", aggravates: { sensitivity: "strong", redness: "strong" }, confidence: "high" },
+    ],
+    expected: 7,
+    rationale: "Strong fit; contains a fragrance allergen but user isn't allergic or sensitive — mild ding for the irritant, not a tank.",
+  }),
+
+  // ── SAME product as above, but now the user IS sensitive — same ingredients, big swing ──
+  buildCase({
+    product: "Same serum with fragrance allergen — but user IS sensitive",
+    profile: profile({ skinType: "oily", sensitive: true, concerns: ["Acne", "Oiliness"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Niacinamide", helps: { oiliness: "strong", acne: "moderate" }, confidence: "high" },
+      { name: "Linalool", fragrance: true, irritation: "medium", aggravates: { sensitivity: "strong", redness: "strong" }, confidence: "high" },
+    ],
+    expected: 4.5,
+    rationale: "Identical product, but the fragrance allergen + sensitivity now matters a lot — the same serum swings down hard for this user.",
+  }),
+
+  // ── TENSION: does ALMOST nothing wrong, but also almost nothing right (pure neutral) ──
+  buildCase({
+    product: "Plain glycerin-water mist — acne-focused user",
+    profile: profile({ skinType: "oily", concerns: ["Acne", "Pores"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Glycerin", helps: { dryness: "moderate" }, confidence: "high" },
+      { name: "Butylene Glycol", confidence: "medium" },
+    ],
+    expected: 5,
+    rationale: "Harmless but irrelevant — does nothing for acne/pores and nothing bad either. Should sit right at neutral baseline, NOT be penalized.",
+  }),
+
+  // ── TENSION: many mild helps vs one strong help — does breadth beat depth? ──
+  buildCase({
+    product: "Multi-active 'everything' serum — broad but shallow",
+    profile: profile({ skinType: "combination", concerns: ["Acne", "Dark spots", "Fine lines"] }),
+    ingredients: [
+      { name: "Aqua" },
+      { name: "Niacinamide", helps: { acne: "slight", oiliness: "slight" }, confidence: "high" },
+      { name: "Adenosine", helps: { "fine-lines": "slight" }, confidence: "medium" },
+      { name: "Arbutin", helps: { "dark-spots": "slight" }, confidence: "medium" },
+    ],
+    expected: 6,
+    rationale: "Touches all three concerns but only slightly on each — broad shallow coverage; better than ignoring them, worse than nailing one.",
+  }),
+
 ];
 
   
