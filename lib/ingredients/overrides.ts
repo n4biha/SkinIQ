@@ -84,7 +84,7 @@ const SEED: Array<[string, GradeOverride]> = [
   ["Myristyl Myristate", comedogenic(5)],
 ];
 
-export const OVERRIDES: Record<string, GradeOverride> = Object.fromEntries(
+const OVERRIDES: Record<string, GradeOverride> = Object.fromEntries(
   SEED.map(([name, ov]) => [normalizeName(name), ov]),
 );
 

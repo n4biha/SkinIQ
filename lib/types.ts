@@ -63,26 +63,6 @@ export const ConcernSchema = z.enum([
 export const HelpStrengthSchema = z.enum(["strong", "moderate"]);
 export const IrritationRiskSchema = z.enum(["none", "low", "medium", "high"]);
 
-export const IngredientHelpSchema = z.object({
-  concern: ConcernSchema,
-  strength: HelpStrengthSchema,
-});
-
-/**
- * The graded assessment an ingredient gets — from the curated map, the CosIng
- * tier, or the Gemini judgment (temp 0, cached). Scoring consumes ONLY these
- * fields; the model grades ingredients but never produces a score.
- */
-export const IngredientAssessmentSchema = z.object({
-  name: z.string(),
-  function: z.string(),
-  helps: z.array(IngredientHelpSchema),
-  irritation: IrritationRiskSchema,
-  comedogenic: z.number().int().min(0).max(5),
-  fragrance: z.boolean(),
-  note: z.string(),
-});
-
 /* ---- Knowledge-base grade (three-state, AI-graded + cached) ---- */
 
 /**
@@ -253,4 +233,3 @@ export type ReportCopy = z.infer<typeof ReportCopySchema>;
 export type Concern = z.infer<typeof ConcernSchema>;
 export type HelpStrength = z.infer<typeof HelpStrengthSchema>;
 export type IrritationRisk = z.infer<typeof IrritationRiskSchema>;
-export type IngredientAssessment = z.infer<typeof IngredientAssessmentSchema>;

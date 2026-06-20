@@ -4,11 +4,11 @@ import type { Concern, SkinProfile } from "@/lib/types";
 /* ---- Temporary grade shape (Step 2 replaces with the real IngredientInfo) ---- */
 
 export type CalHelpStrength = "strong" | "moderate" | "slight";
-export type CalConfidence = "high" | "medium" | "low";
-export type CalIrritation = "none" | "low" | "medium" | "high";
+type CalConfidence = "high" | "medium" | "low";
+type CalIrritation = "none" | "low" | "medium" | "high";
 
 /** One graded ingredient in a calibration case. Optional fields default benign. */
-export type CalIngredient = {
+type CalIngredient = {
   name: string;
   /** Concerns this ingredient helps, graded. Omit concerns it doesn't help. */
   helps?: Partial<Record<Concern, CalHelpStrength>>;

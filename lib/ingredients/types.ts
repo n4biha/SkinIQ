@@ -27,7 +27,7 @@ export type IngredientInfo = {
 };
 
 /** Which tier answered, for logging/provenance. null = nothing matched. */
-export type Tier = 1 | 2 | 3 | null;
+type Tier = 1 | 2 | 3 | null;
 
 /**
  * A free-text (non-canonical) skin concern, e.g. "texture". `key` is the stable,
