@@ -56,8 +56,8 @@ npm install
 npm run dev          # http://localhost:3000  (redirects to /onboarding)
 ```
 
-The app **degrades gracefully** without keys — the UI runs, but the AI scan and
-sign-in are disabled. To enable the full pipeline, add a `.env.local`:
+The app still runs without any keys, but the AI scan and sign-in won't work until you add them. To turn on the full 
+app, create a `.env.local`:
 
 ```bash
 GEMINI_API_KEY=...                 # Google Gemini key
@@ -67,7 +67,7 @@ SUPABASE_SERVICE_ROLE_KEY=...       # secret service-role key (server only)
 ```
 
 Then apply the database schema by running `supabase/schema.sql` in the Supabase
-SQL editor (idempotent — safe to re-run).
+SQL editor.
 
 ## Scripts
 
