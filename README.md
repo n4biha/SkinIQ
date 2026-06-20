@@ -46,9 +46,7 @@ snap a photo of any product's ingredient list, and get an explainable
 | Framework | **Next.js 16** (App Router) + **React 19** + **TypeScript** |
 | AI | **Google Gemini** via `@google/genai` (label reading, ingredient grading, report copy) |
 | Data & auth | **Supabase** (Postgres, Storage, magic-link auth) via `@supabase/ssr` |
-| Validation | **Zod** schemas as the single source of truth for every data shape |
 | Styling | **CSS Modules** driven by CSS-variable design tokens |
-| Tests | **Vitest** |
 | Hosting | **Vercel** |
 
 ## Getting started
